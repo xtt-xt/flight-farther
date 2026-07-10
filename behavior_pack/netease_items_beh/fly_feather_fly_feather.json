@@ -1,0 +1,20 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "components": {
+            "minecraft:max_damage": 432,
+            "netease:armor": {
+                "armor_slot": 1,
+                "defense": 0,
+                "enchantment": 0,
+                "knockback_resistance": 0,
+                "toughness": 0
+            }
+        },
+        "description": {
+            "category": "equipment",
+            "custom_item_type": "armor",
+            "identifier": "fly_feather:fly_feather"
+        }
+    }
+}

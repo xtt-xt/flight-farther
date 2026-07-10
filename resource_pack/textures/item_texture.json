@@ -1,0 +1,18 @@
+{
+    "resource_pack_name": "vanilla",
+    "texture_data": {
+        "fly_feather:ender_feather": {
+            "textures": "textures/items/ender_feather"
+        },
+        "fly_feather:eternal_feather": {
+            "textures": "textures/items/eternal_feather"
+        },
+        "fly_feather:fly_feather": {
+            "textures": "textures/items/fly_feater"
+        },
+        "fly_feather:swift_feather": {
+            "textures": "textures/items/swift_feather"
+        }
+    },
+    "texture_name": "atlas.items"
+}

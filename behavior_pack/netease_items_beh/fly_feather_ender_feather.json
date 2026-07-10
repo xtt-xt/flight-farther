@@ -1,0 +1,23 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "components": {
+            "minecraft:max_damage": 1296,
+            "netease:armor": {
+                "armor_slot": 1,
+                "defense": 0,
+                "enchantment": 0,
+                "knockback_resistance": 0.0,
+                "toughness": 0
+            },
+            "netease:customtips": {
+                "value": "§e§l◆ 维度共鸣效果\n§r§5末地   §7▸ §7速度II §7| §7跳跃II §7| §7抗火  §7| §7力量I §7| §7恢复I §7| §7水下呼吸 \n§4下界   §7▸ §7速度I  §7| §7跳跃I  §7| §7抗火  §7| §7力量I \n§2主世界 §7▸ §7速度I  §7| §7跳跃I  §7| §7恢复I §7| §7水下呼吸"
+            }
+        },
+        "description": {
+            "category": "equipment",
+            "custom_item_type": "armor",
+            "identifier": "fly_feather:ender_feather"
+        }
+    }
+}

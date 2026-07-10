@@ -1,0 +1,11 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "components": {
+            "minecraft:icon": "fly_feather:swift_feather"
+        },
+        "description": {
+            "identifier": "fly_feather:swift_feather"
+        }
+    }
+}

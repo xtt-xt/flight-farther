@@ -286,43 +286,18 @@
 
 ## 📄 开源协议
 
-
-
-
 本项目采用 [GNU General Public License v3.0](LICENSE) 协议开源。
-
-
-
+附加条款：禁止将本体及其修改版本以任意收费形式出售
 
 ***
 
+## ✉️ 联系
 
+如有问题或建议，请通过以下方式联系：
 
-
-## 👤 作者
-
-
-
-
-**星天 (xtt)**
-
-
-
-
-* GitHub: [@xtt-xt](https://github.com/xtt-xt)
-
-
-
-
-* Bilibili: [星天的空间](https://space.bilibili.com/1207935066)
-
-
-
-
-* QQ群：1095613151
-
-
-
+ * 创建 Issue
+ * 提交 Pull Request
+ * QQ群 1095613151
 
 ***
 

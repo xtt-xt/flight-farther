@@ -1,0 +1,10 @@
+{
+	"format_version": "0.0.1",
+	"name": "setting_get",
+	"description": "查询模组设置项：/setting_get <键> [目标]",
+	"permission_level": "any",
+	"args": [
+		{"name": "键", "type": "str", "default": ""},
+		{"name": "目标", "type": "target", "default": "@s"}
+	]
+}

@@ -1,0 +1,11 @@
+{
+	"format_version": "0.0.1",
+	"name": "setting_set",
+	"description": "修改模组设置项：/setting_set <键> <值> [目标]",
+	"permission_level": "game_directors",
+	"args": [
+		{"name": "键", "type": "str", "default": ""},
+		{"name": "值", "type": "str", "default": ""},
+		{"name": "目标", "type": "target", "default": "@s"}
+	]
+}

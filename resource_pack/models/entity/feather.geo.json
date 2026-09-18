@@ -4,76 +4,46 @@
         {
             "bones": [
                 {
-                    "cubes": [
-                        {
-                            "origin": [
-                                -1,
-                                15,
-                                2
-                            ],
-                            "pivot": [
-                                0,
-                                19,
-                                3
-                            ],
-                            "rotation": [
-                                0,
-                                -27.5,
-                                0
-                            ],
-                            "size": [
-                                13,
-                                14,
-                                1
-                            ],
-                            "uv": [
-                                36,
-                                0
-                            ]
-                        }
-                    ],
-                    "name": "left_wing",
-                    "pivot": [
-                        0,
-                        19,
-                        3
-                    ]
+                    "name": "root",
+                    "pivot": [0, 0, 0]
+                },
+                {
+                    "name": "waist",
+                    "parent": "root",
+                    "pivot": [0, 12, 0]
+                },
+                {
+                    "name": "body",
+                    "parent": "waist",
+                    "pivot": [0, 24, 0]
                 },
                 {
                     "cubes": [
                         {
-                            "origin": [
-                                -1,
-                                15,
-                                3
-                            ],
-                            "pivot": [
-                                0,
-                                19,
-                                3
-                            ],
-                            "rotation": [
-                                0,
-                                -152.5,
-                                0
-                            ],
-                            "size": [
-                                13,
-                                14,
-                                1
-                            ],
-                            "uv": [
-                                36,
-                                0
-                            ]
+                            "origin": [-1, 15, 2],
+                            "pivot": [0, 19, 3],
+                            "rotation": [0, -27.5, 0],
+                            "size": [13, 14, 1],
+                            "uv": [36, 0]
+                        }
+                    ],
+                    "name": "left_wing",
+                    "parent": "body",
+                    "pivot": [0, 19, 3]
+                },
+                {
+                    "cubes": [
+                        {
+                            "origin": [-1, 15, 3],
+                            "pivot": [0, 19, 3],
+                            "rotation": [0, -152.5, 0],
+                            "size": [13, 14, 1],
+                            "uv": [36, 0]
                         }
                     ],
                     "name": "right_wing",
-                    "pivot": [
-                        0,
-                        19,
-                        3
-                    ]
+                    "parent": "body",
+                    "pivot": [0, 19, 3]
                 }
             ],
             "description": {
@@ -81,11 +51,7 @@
                 "texture_height": 64,
                 "texture_width": 64,
                 "visible_bounds_height": 3.5,
-                "visible_bounds_offset": [
-                    0,
-                    1.25,
-                    0
-                ],
+                "visible_bounds_offset": [0, 1.25, 0],
                 "visible_bounds_width": 3
             }
         }

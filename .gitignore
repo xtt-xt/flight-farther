@@ -1,10 +1,14 @@
 # ========== 网易基岩版开发环境文件 ==========
-# MC Studio / Nemo Studio 配置文件
+# MC Studio / Nemo Studio 工程配置
 .mcdev.json
 studio.json
 work.mcscfg
 world_resource_packs.json
 world_behavior_packs.json
+
+# AI 助手 / 编辑器临时目录
+.trae/
+docs/tmp/
 
 # 编辑器临时文件
 *.tmp
@@ -26,10 +30,9 @@ $RECYCLE.BIN/
 .LSOverride
 
 # Linux
-*~
 .nfs*
 
-# ========== 压缩包/构建产物 ==========
+# ========== 压缩包 / 构建产物 ==========
 *.zip
 *.mcaddon
 *.mcpack
@@ -38,7 +41,12 @@ $RECYCLE.BIN/
 /build/
 /dist/
 
-# ========== IDE/编辑器 ==========
+# ========== Python ==========
+__pycache__/
+*.py[cod]
+*.pyo
+
+# ========== IDE / 编辑器 ==========
 # VS Code
 .vscode/
 !.vscode/settings.json

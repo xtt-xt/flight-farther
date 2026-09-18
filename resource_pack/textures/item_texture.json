@@ -8,7 +8,7 @@
             "textures": "textures/items/eternal_feather"
         },
         "fly_feather:fly_feather": {
-            "textures": "textures/items/fly_feater"
+            "textures": "textures/items/fly_feather"
         },
         "fly_feather:swift_feather": {
             "textures": "textures/items/swift_feather"

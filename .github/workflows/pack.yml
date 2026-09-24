@@ -1,4 +1,4 @@
-name: Package AddOn (be / re)
+name: Package AddOn (be+re)
 
 on:
   push:
@@ -47,7 +47,7 @@ jobs:
       - name: 确保 zip 可用
         run: which zip || { sudo apt-get update -qq && sudo apt-get install -y -qq zip; }
 
-      - name: 打包
+      - name: 打包（be + re 合并成一个 zip）
         run: |
           set -e
           BE='${{ steps.dirs.outputs.be }}'
@@ -61,13 +61,13 @@ jobs:
           rsync -a --exclude '__pycache__/' --exclude '*.py[cod]' --exclude '.DS_Store' --exclude '.mcs*' "$RE" stage/resource_pack/
           mkdir -p stage/behavior_pack/entities
 
-          (cd stage && zip -qr "../out/${NAME}_${V}_be.zip" behavior_pack)
-          (cd stage && zip -qr "../out/${NAME}_${V}_re.zip" resource_pack)
-          (cd stage && zip -qr "../out/${NAME}_${V}.mcaddon" behavior_pack resource_pack)
+          (cd stage && zip -qr "../out/${NAME}_${V}.zip" behavior_pack resource_pack)
 
           (cd out && sha256sum ./* > SHA256SUMS.txt)
           ls -l out
           cat out/SHA256SUMS.txt
+          echo '--- zip 内容（前 15 项）---'
+          unzip -l "out/${NAME}_${V}.zip" | head -15
 
       - name: 上传 Artifact
         uses: actions/upload-artifact@v4

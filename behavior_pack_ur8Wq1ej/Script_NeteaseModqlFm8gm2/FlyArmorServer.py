@@ -165,36 +165,58 @@ ARMOR_DISPLAY_BY_KEY = {
 }
 
 # ==================== 自定义指令设置键表 ====================
-# 键（不含主卡片前缀 "fly_armor."）-> (类型, 默认值)
-# 类型: "bool" / "int" / "float" / "str"
-SETTING_VALUE_SCHEMA = {
-    "server.default.enable_real_time_durability": ("bool", True),
-    "server.default.enable_ender_effect": ("bool", True),
-    "server.default.enable_swift_effect": ("bool", True),
-    "server.default.enable_ender_full": ("bool", False),
-    "server.default.debug_mode": ("bool", False),
-    "server.default.allow_command_block_setting": ("bool", True),
-    "server.default.permission_lock_mode": ("bool", True),
-    "server.default.permission_visitor": ("bool", False),
-    "server.default.permission_member": ("bool", False),
-    "server.default.permission_operator": ("bool", True),
-    "server.default.permission_custom": ("bool", False),
+# item_id -> (中间卡片id, 类型, 默认值)
+# 中间卡片 id 必须与客户端 ITEM_GROUPS / SERVER_MIDDLE_GROUPS 完全一致
+_ITEM_META = {
+    "enable_real_time_durability": ("fly_durability", "bool", True),
+    "enable_ender_effect":         ("fly_effect",     "bool", True),
+    "enable_swift_effect":         ("fly_effect",     "bool", True),
+    "enable_ender_full":           ("fly_effect",     "bool", False),
+    "debug_mode":                  ("fly_debug",      "bool", False),
+    "allow_command_block_setting": ("fly_debug",      "bool", True),
+    "permission_lock_mode":        ("fly_permission", "bool", True),
+    "permission_allow_nonadmin":   ("fly_permission", "bool", False),
+    "permission_visitor":          ("fly_permission", "bool", False),
+    "permission_member":           ("fly_permission", "bool", False),
+    "permission_operator":         ("fly_permission", "bool", True),
+    "permission_custom":           ("fly_permission", "bool", False),
 }
 for _k in ARMOR_KEYS:
-    SETTING_VALUE_SCHEMA["server.default.enable_recipe_" + _k] = ("bool", True)
-    SETTING_VALUE_SCHEMA["server.default.enable_durability_" + _k] = ("bool", True)
-    SETTING_VALUE_SCHEMA["server.default.enable_unbreaking_" + _k] = ("bool", True)
-    SETTING_VALUE_SCHEMA["server.default.repairable_" + _k] = ("bool", True)
-    SETTING_VALUE_SCHEMA["server.default.repair_consume_material_" + _k] = ("bool", True)
     _cfg = FLY_ARMOR_CONFIG[ITEM_BY_ARMOR_KEY[_k]]
-    SETTING_VALUE_SCHEMA["server.default.repair_xp_" + _k] = ("int", _cfg["repair_xp_cost"])
-    SETTING_VALUE_SCHEMA["server.default.repair_material_" + _k] = ("str", _cfg["repair_material"])
+    _ITEM_META["enable_recipe_" + _k]            = ("fly_recipe",     "bool", True)
+    _ITEM_META["enable_flight_" + _k]            = ("fly_effect",     "bool", True)
+    _ITEM_META["enable_durability_" + _k]        = ("fly_durability", "bool", True)
+    _ITEM_META["enable_unbreaking_" + _k]        = ("fly_durability", "bool", True)
+    _ITEM_META["repairable_" + _k]               = ("fly_repair",     "bool", True)
+    _ITEM_META["repair_consume_material_" + _k]  = ("fly_repair",     "bool", True)
+    _ITEM_META["repair_xp_" + _k]                = ("fly_repair",     "int",  _cfg["repair_xp_cost"])
+    _ITEM_META["repair_material_" + _k]          = ("fly_repair",     "str",  _cfg["repair_material"])
 for _k in EFFECT_ARMOR_KEYS:
-    SETTING_VALUE_SCHEMA["server.default.enable_effect_durability_" + _k] = ("bool", True)
+    _ITEM_META["enable_effect_durability_" + _k] = ("fly_durability", "bool", True)
+
+# schema 键（不含 "fly_armor." 前缀）-> (类型, 默认值)
+SETTING_VALUE_SCHEMA = {}
+for _item, (_mid, _type, _default) in _ITEM_META.items():
+    SETTING_VALUE_SCHEMA["server.%s.%s" % (_mid, _item)] = (_type, _default)
+
+# ==================== 自定义指令：客户端设置键表 ====================
+# 客户端设置存于各玩家本地（前置本地存储），逐玩家独立，指令仅允许本人管理自己的
+_CLIENT_ITEM_META = {
+    "client_log_output": ("fly_debug_client", "bool", False),
+}
+
+# 客户端 schema 键（含 "client." 前缀）-> (类型, 默认值)
+CLIENT_SETTING_VALUE_SCHEMA = {}
+for _item, (_mid, _type, _default) in _CLIENT_ITEM_META.items():
+    CLIENT_SETTING_VALUE_SCHEMA["client.%s.%s" % (_mid, _item)] = (_type, _default)
+
+SERVER_SUB_KEY = "server"
+CLIENT_SUB_KEY = "client"
 
 # 服务端各分页（中间卡片）所包含的默认设置键，用于"重置本页"
 SERVER_GROUP_DEFAULT_KEYS = {
-    "fly_effect": ["enable_ender_effect", "enable_ender_full", "enable_swift_effect"],
+    "fly_effect": (["enable_ender_effect", "enable_ender_full", "enable_swift_effect"]
+                   + ["enable_flight_" + k for k in ARMOR_KEYS]),
     "fly_durability": ["enable_real_time_durability"]
                      + ["enable_durability_" + k for k in ARMOR_KEYS]
                      + ["enable_unbreaking_" + k for k in ARMOR_KEYS]
@@ -204,8 +226,9 @@ SERVER_GROUP_DEFAULT_KEYS = {
                    + ["repair_xp_" + k for k in ARMOR_KEYS]
                    + ["repair_material_" + k for k in ARMOR_KEYS]),
     "fly_recipe": ["enable_recipe_" + k for k in ARMOR_KEYS],
-    "fly_permission": ["permission_lock_mode", "permission_visitor",
-                       "permission_member", "permission_operator", "permission_custom"],
+    "fly_permission": ["permission_lock_mode", "permission_allow_nonadmin",
+                       "permission_visitor", "permission_member",
+                       "permission_operator", "permission_custom"],
 }
 
 
@@ -235,6 +258,9 @@ class FlyArmorServerSystem(ServerSystem):
                             "FlyArmorSettingChangeEvent", self, self.on_setting_change)
         self.ListenForEvent("FlyArmorClient", "FlyArmorClientSystem",
                             "FlyArmorResetGroupEvent", self, self.on_reset_group)
+        # 客户端设置指令：客户端回执本机设置值（get/list）
+        self.ListenForEvent("FlyArmorClient", "FlyArmorClientSystem",
+                            self.CLIENT_SETTING_REPLY_EVENT, self, self.on_client_setting_reply)
 
         # ---- 模组全局设置（仅房主/管理员可改） ----
         self._default_settings = {
@@ -250,6 +276,9 @@ class FlyArmorServerSystem(ServerSystem):
         }
         # 自定义指令：是否允许命令方块修改设置
         self._default_settings["allow_command_block_setting"] = True
+        # 逐装备：是否启用飞行（关闭则装备该羽不再提供飞行能力）
+        for k in ARMOR_KEYS:
+            self._default_settings["enable_flight_" + k] = True
         # 逐装备：飞行耐久消耗
         for k in ARMOR_KEYS:
             self._default_settings["enable_durability_" + k] = True
@@ -268,6 +297,8 @@ class FlyArmorServerSystem(ServerSystem):
             self._default_settings["repair_material_" + k] = cfg["repair_material"]
         # 权限管理：锁定模式（默认仅操作员）+ 关闭锁定时可配置的权限档
         self._default_settings["permission_lock_mode"] = True
+        # 非管理员是否可操作「权限管理」页：默认关闭，防止非管理员自行提权
+        self._default_settings["permission_allow_nonadmin"] = False
         self._default_settings["permission_visitor"] = False
         self._default_settings["permission_member"] = False
         self._default_settings["permission_operator"] = True
@@ -280,6 +311,7 @@ class FlyArmorServerSystem(ServerSystem):
         self.player_fly_state = {}
         self.player_pending_durability = {}  # 非实时耐久：飞行中待扣除的耐久累积值 playerId -> int
         self.player_pending_snapshot = {}  # 待扣积累所属装备快照 playerId -> (itemName, curDurability)
+        self._pending_client_list_page = {}  # 客户端设置列表待回执页码 playerId -> page
         self._flush_retry_count = {}  # 切装结算定位失败的连续重试次数 playerId -> int
         self._modifying = False
         self.ender_effect_counter = {}
@@ -354,6 +386,27 @@ class FlyArmorServerSystem(ServerSystem):
             return self._is_operator(playerId)
         return self._get_operation_level(playerId) in self._allowed_permission_levels()
 
+    def can_edit_permission_page(self, playerId):
+        """判定玩家是否有权操作「权限管理」页。
+
+        管理员（操作员）始终可改；非管理员需同时满足：锁定模式关闭
+        + 已开启「非管理员可操作权限管理」+ 其权限档在允许集合内。
+        默认禁止，避免被放行的非管理员自行提权。
+        """
+        if self._is_operator(playerId):
+            return True
+        if not self.mod_settings.get("permission_allow_nonadmin", False):
+            return False
+        return self.can_edit_settings(playerId)
+
+    def _notify_permission(self, playerId):
+        """向单个玩家下发权限状态与模组设置（含权限管理页可操作权）。"""
+        self.NotifyToClient(playerId, "FlyArmorPermissionEvent", {
+            "hasPermission": self.can_edit_settings(playerId),
+            "canEditPermission": self.can_edit_permission_page(playerId),
+            "settings": self.mod_settings
+        })
+
     def on_player_join(self, args):
         playerId = args.get('playerId')
         # 服务端 addons 加载完成时动态注册配方（仅一次，开关需重启世界后生效）
@@ -361,20 +414,12 @@ class FlyArmorServerSystem(ServerSystem):
             self._recipes_registered = True
             self._register_recipes()
         if playerId:
-            has_perm = self.can_edit_settings(playerId)
-            self.NotifyToClient(playerId, "FlyArmorPermissionEvent", {
-                "hasPermission": has_perm,
-                "settings": self.mod_settings
-            })
+            self._notify_permission(playerId)
 
     def on_request_permission(self, args):
         playerId = args.get('playerId')
         if playerId:
-            has_perm = self.can_edit_settings(playerId)
-            self.NotifyToClient(playerId, "FlyArmorPermissionEvent", {
-                "hasPermission": has_perm,
-                "settings": self.mod_settings
-            })
+            self._notify_permission(playerId)
 
     def on_setting_change(self, args):
         playerId = args.get('playerId')
@@ -384,6 +429,10 @@ class FlyArmorServerSystem(ServerSystem):
             return
         if not self.can_edit_settings(playerId):
             self.send_tip(playerId, "§c你没有权限修改模组设置！")
+            return
+        # 权限管理页：非管理员默认不可操作（即使权限档已放行），防止自行提权
+        if key.startswith("permission_") and not self.can_edit_permission_page(playerId):
+            self.send_tip(playerId, "§c你没有权限修改权限管理设置！")
             return
         if key not in self.mod_settings:
             return
@@ -462,6 +511,10 @@ class FlyArmorServerSystem(ServerSystem):
         if not self.can_edit_settings(playerId):
             self.send_tip(playerId, "§c你没有权限重置模组设置！")
             return
+        # 权限管理页：非管理员默认不可操作（即使权限档已放行）
+        if mid == "fly_permission" and not self.can_edit_permission_page(playerId):
+            self.send_tip(playerId, "§c你没有权限重置权限管理设置！")
+            return
         keys = SERVER_GROUP_DEFAULT_KEYS.get(mid)
         if not keys:
             return
@@ -471,24 +524,46 @@ class FlyArmorServerSystem(ServerSystem):
         self._save_settings()
         self._debug_print("重置分组 %s" % mid)
         for pid in serverApi.GetPlayerList():
-            self.NotifyToClient(pid, "FlyArmorPermissionEvent", {
-                "hasPermission": self.can_edit_settings(pid),
-                "settings": self.mod_settings
-            })
+            self._notify_permission(pid)
 
     # ==================== 自定义指令（不依赖前置，支持命令方块） ====================
 
-    COMMAND_NAMES = ("setting_set", "setting_get", "setting_reset", "setting_list")
+    # 服务端设置指令（写操作需管理员）
+    SERVER_COMMAND_NAMES = ("setting_set", "setting_get", "setting_reset", "setting_list")
+    # 客户端设置指令（无需管理员权限，仅作用于执行者本人的本机设置）
+    CLIENT_COMMAND_NAMES = ("clientsetting_set", "clientsetting_get",
+                            "clientsetting_reset", "clientsetting_list")
+    # 各子卡片的列表指令名（用于分页提示）
+    LIST_COMMAND_BY_SUB = {SERVER_SUB_KEY: "setting_list",
+                           CLIENT_SUB_KEY: "clientsetting_list"}
     FULL_KEY_PREFIX = "fly_armor."
-    SETTING_KEY_PREFIX = "server.default."
+    MAIN_CARD_ID = "fly_armor"
+    LIST_PAGE_SIZE = 10  # setting_list 每页条数
+    # 服务端 -> 客户端：下发客户端设置指令；客户端 -> 服务端：回执本机设置值
+    CLIENT_SETTING_CMD_EVENT = "Script_NeteaseModqlFm8gm2_ClientSettingCommand"
+    CLIENT_SETTING_REPLY_EVENT = "Script_NeteaseModqlFm8gm2_ClientSettingReply"
 
-    def _setting_key_from_full(self, full_key):
-        """完整键 fly_armor.server.default.<key> -> <key>（不符合前缀返回 None）。"""
-        if full_key.startswith(self.FULL_KEY_PREFIX):
-            rest = full_key[len(self.FULL_KEY_PREFIX):]
-            if rest.startswith(self.SETTING_KEY_PREFIX):
-                return rest[len(self.SETTING_KEY_PREFIX):]
-        return None
+    def _split_full_key(self, full_key):
+        """fly_armor.server.<mid>.<item> -> (sub, mid, item)；不合法返回 (None, None, None)。"""
+        if not isinstance(full_key, str) or not full_key.startswith(self.FULL_KEY_PREFIX):
+            return None, None, None
+        parts = full_key[len(self.FULL_KEY_PREFIX):].split(".")
+        if len(parts) != 3:
+            return None, None, None
+        return parts[0], parts[1], parts[2]
+
+    def _schema_key(self, full_key):
+        """完整键 -> schema 键（server.<mid>.<item>）；不合法返回 None。"""
+        sub, mid, item = self._split_full_key(full_key)
+        if sub is None:
+            return None
+        return "%s.%s.%s" % (sub, mid, item)
+
+    def _item_of_schema(self, schema_key):
+        """schema 键 server.<mid>.<item> -> item（末段）。"""
+        if isinstance(schema_key, str) and "." in schema_key:
+            return schema_key.split(".")[-1]
+        return schema_key
 
     def _coerce_setting_value(self, type_name, raw):
         """按类型把原始输入转成 python 值；失败返回 None（不抛异常）。"""
@@ -514,17 +589,14 @@ class FlyArmorServerSystem(ServerSystem):
         return str(raw)  # str：原样保留（允许空串）
 
     def ApplySetting(self, schema_key, value, source="command"):
-        """单一写入入口：校验并按类型写入服务端存储。schema_key 形如 server.default.<item>。
+        """单一写入入口：校验并按类型写入服务端存储。schema_key 形如 server.<mid>.<item>。
 
         返回 (ok, 规范值/失败原因)。
         """
         schema = SETTING_VALUE_SCHEMA.get(schema_key)
         if schema is None:
             return False, "unknown"
-        if schema_key.startswith(self.SETTING_KEY_PREFIX):
-            key = schema_key[len(self.SETTING_KEY_PREFIX):]
-        else:
-            key = schema_key
+        key = self._item_of_schema(schema_key)  # 写入 mod_settings 用的是末段 item
         type_name, _default = schema
         if type_name == "bool":
             parsed = self._coerce_setting_value("bool", value)
@@ -560,19 +632,44 @@ class FlyArmorServerSystem(ServerSystem):
         self._debug_print("设置由%s更新：%s = %s" % (source, key, mod_value))
         return True, mod_value
 
-    def _echo_to_player(self, playerId, text):
-        """用 /tellraw 把带 [飞行之羽] 前缀的明细发给玩家（不依赖前置）。"""
+    def _send_tellraw(self, playerId, text):
+        """用 /tellraw 把明细发给玩家（不依赖前置）。失败记日志，不静默。"""
         try:
             import json as _json
-            # json.dumps 统一转义换行/引号/反斜杠/中文，保证单行合法 JSON
-            payload = _json.dumps({"rawtext": [{"text": text}]}, ensure_ascii=False)
+            # ensure_ascii=True：Py2.7 下输出 \uXXXX 保证 SetCommand 行为稳定
+            payload = _json.dumps({"rawtext": [{"text": text}]}, ensure_ascii=True)
         except Exception:
             payload = '{"rawtext":[{"text":"%s"}]}' % text.replace("\\", "\\\\").replace("\"", "\\\"")
         try:
             cmdComp = serverCompFactory.CreateCommand(playerId)
-            cmdComp.SetCommand('/tellraw @s %s' % payload)
-        except Exception:
+            ok = cmdComp.SetCommand('/tellraw @s %s' % payload)
+            self._debug_print("tellraw -> %s : %s" % (playerId, ok))
+            return bool(ok)
+        except Exception as e:
+            print "[FlyArmor] tellraw 失败: %s" % str(e)
             self.send_tip(playerId, text)
+            return False
+
+    _TELLRAW_MAX_CHARS = 400
+    _TELLRAW_MAX_LINES = 8
+
+    def _split_lines(self, text):
+        """把多行文本切成若干段，每段 ≤8 行 / ≤400 字符，行从完整边界切。"""
+        lines = text.split("\n")
+        chunks = []
+        buf = []
+        buf_len = 0
+        for ln in lines:
+            ln_len = len(ln) + 1  # +1 计入换行
+            if buf and (len(buf) >= self._TELLRAW_MAX_LINES or buf_len + ln_len > self._TELLRAW_MAX_CHARS):
+                chunks.append("\n".join(buf))
+                buf = []
+                buf_len = 0
+            buf.append(ln)
+            buf_len += ln_len
+        if buf:
+            chunks.append("\n".join(buf))
+        return chunks
 
     def _mirror_sync(self, target_ids, full_key, value):
         """给目标玩家推送设置镜像刷新（无前置时客户端自动忽略，不报错）。"""
@@ -596,19 +693,203 @@ class FlyArmorServerSystem(ServerSystem):
         return ()
 
     def _echo_or_log(self, target_ids, playerId, text):
-        """玩家走 tellraw 明细；命令方块/控制台（无玩家）走服务端日志。"""
+        """玩家走 tellraw 明细（超长自动分段）；命令方块/控制台（无玩家）走服务端日志。"""
         if playerId or target_ids:
+            chunks = self._split_lines(text)
             for pid in target_ids:
-                self._echo_to_player(pid, text)
+                for chunk in chunks:
+                    self._send_tellraw(pid, chunk)
         else:
             print "[FlyArmor] 指令明细: " + text
 
     def _audit(self, line):
         print "[FlyArmor][指令审计] " + line
 
+    def _schema_table_of(self, sub):
+        """按子卡片 key 取设置键表；未知子卡片返回 None。"""
+        if sub == SERVER_SUB_KEY:
+            return SETTING_VALUE_SCHEMA
+        if sub == CLIENT_SUB_KEY:
+            return CLIENT_SETTING_VALUE_SCHEMA
+        return None
+
+    def _parse_page(self, arg_map):
+        try:
+            return int(arg_map.get('页码') or 1)
+        except Exception:
+            return 1
+
+    def _echo_setting_list(self, playerId, items, page, sub):
+        """统一回显设置键列表（分页 + 页码越界提示）；items 为已排序的 "键 = 值" 列表。
+
+        无玩家（命令方块/控制台）时走服务端日志，避免向 None 发 tellraw。
+        """
+        targets = (playerId,) if playerId else ()
+        if not items:
+            self._echo_or_log(targets, playerId, "[飞行之羽] 该子卡片没有可管理的设置键")
+            return
+        total = len(items)
+        max_page = max(1, (total + self.LIST_PAGE_SIZE - 1) / self.LIST_PAGE_SIZE)
+        clamped = False
+        if page < 1:
+            page, clamped = 1, True
+        elif page > max_page:
+            page, clamped = max_page, True
+        page_items = items[(page - 1) * self.LIST_PAGE_SIZE: page * self.LIST_PAGE_SIZE]
+        label = "服务端" if sub == SERVER_SUB_KEY else "客户端"
+        lines = ["[飞行之羽] 模组 %s（%s）— 共 %d 项" % (self.MAIN_CARD_ID, label, total)]
+        lines.extend(page_items)
+        footer = "── 第 %d/%d 页 ──" % (page, max_page)
+        if max_page > 1:
+            footer += " 下一页：/%s %s %d" % (self.LIST_COMMAND_BY_SUB[sub],
+                                              self.MAIN_CARD_ID, page + 1)
+        if clamped:
+            footer += " §7（页码超出范围，已显示第 %d/%d 页）" % (page, max_page)
+        lines.append(footer)
+        self._echo_or_log(targets, playerId, "\n".join(lines))
+
+    def _send_client_setting_cmd(self, playerId, payload):
+        """向指定玩家客户端下发客户端设置读写指令。"""
+        try:
+            self.NotifyToClient(playerId, self.CLIENT_SETTING_CMD_EVENT, payload)
+        except Exception:
+            pass
+
+    def _fail_wrong_sub(self, args, sub):
+        """键与所用指令不属于同一边时的提示：告诉玩家该改用哪条指令。"""
+        args["return_failed"] = True
+        args["return_msg_key"] = ("commands.fly_armor.use_client_cmd"
+                                  if sub == SERVER_SUB_KEY
+                                  else "commands.fly_armor.use_server_cmd")
+
+    def _handle_setting_list(self, args, arg_map, playerId, sub):
+        """setting_list / clientsetting_list：分别列出服务端（本机权威）与客户端（本人回执）设置键。"""
+        mod_id = str(arg_map.get('模组') or "").strip()
+        if not mod_id:
+            args["return_failed"] = True
+            args["return_msg_key"] = "commands.fly_armor.list.need_mod"
+            if playerId:
+                self._send_tellraw(playerId, "[飞行之羽] 请指定模组id，例如 fly_armor")
+            return
+        if mod_id.startswith(self.MAIN_CARD_ID + "."):
+            # 兼容带子卡片后缀的写法：后缀必须与所用指令一致
+            if mod_id[len(self.MAIN_CARD_ID) + 1:] != sub:
+                self._fail_wrong_sub(args, sub)
+                return
+        elif mod_id != self.MAIN_CARD_ID:
+            return  # 静默：模组不归属本模组，保持多模组共存约定
+
+        page = self._parse_page(arg_map)
+        args["return_msg_key"] = "commands.fly_armor.list.ok"
+        if sub == CLIENT_SUB_KEY:
+            # 客户端设置存于玩家本机，须向本人客户端查询后回显
+            if not playerId:
+                args["return_failed"] = True
+                args["return_msg_key"] = "commands.fly_armor.client_need_player"
+                return
+            self._pending_client_list_page[playerId] = page
+            self._send_client_setting_cmd(playerId, {
+                "action": "list",
+                "keys": sorted(CLIENT_SETTING_VALUE_SCHEMA.keys()),
+            })
+            return
+        items = []
+        for k in SETTING_VALUE_SCHEMA:
+            full = self.FULL_KEY_PREFIX + k
+            cur = self.mod_settings.get(self._item_of_schema(k), SETTING_VALUE_SCHEMA[k][1])
+            items.append("%s = %s" % (full, cur))
+        items.sort()
+        self._echo_setting_list(playerId, items, page, sub)
+
+    def _handle_client_setting(self, args, action, rest_pref, full_key, arg_map, playerId):
+        """客户端设置指令：无需管理员权限，但安全收窄为仅作用于调用者本人。
+
+        实际读写由玩家本机完成，明细回显统一在 on_client_setting_reply 中输出。
+        """
+        if not playerId:
+            # 命令方块/控制台无对应玩家，无法管理任何人的客户端设置
+            args["return_failed"] = True
+            args["return_msg_key"] = "commands.fly_armor.client_need_player"
+            return
+
+        if action == "get":
+            if rest_pref not in CLIENT_SETTING_VALUE_SCHEMA:
+                args["return_failed"] = True
+                args["return_msg_key"] = "commands.fly_armor.unknown_key"
+                return
+            self._send_client_setting_cmd(playerId, {"action": "get", "key": full_key})
+            args["return_msg_key"] = "commands.fly_armor.get.ok"
+            return
+
+        if action == "set":
+            if rest_pref not in CLIENT_SETTING_VALUE_SCHEMA:
+                args["return_failed"] = True
+                args["return_msg_key"] = "commands.fly_armor.unknown_key"
+                return
+            type_name, _default = CLIENT_SETTING_VALUE_SCHEMA[rest_pref]
+            value = self._coerce_setting_value(type_name, arg_map.get('值'))
+            if value is None:
+                args["return_failed"] = True
+                args["return_msg_key"] = "commands.fly_armor.bad_value"
+                self._send_tellraw(playerId, "[飞行之羽] 值格式不合法：%s 需要 %s"
+                                   % (self._item_of_schema(rest_pref), type_name))
+                return
+            self._send_client_setting_cmd(playerId, {"action": "set", "key": full_key, "value": value})
+            args["return_msg_key"] = "commands.fly_armor.set.ok"
+            self._audit("clientsetting_set %s = %s" % (full_key, value))
+            return
+
+        if action == "reset":
+            # 重置支持前缀（client 整组 / client.<mid>.<item> 单项）
+            if rest_pref == CLIENT_SUB_KEY:
+                reset_keys = list(CLIENT_SETTING_VALUE_SCHEMA.keys())
+            elif rest_pref in CLIENT_SETTING_VALUE_SCHEMA:
+                reset_keys = [rest_pref]
+            else:
+                reset_keys = [k for k in CLIENT_SETTING_VALUE_SCHEMA if k.startswith(rest_pref)]
+            if not reset_keys:
+                args["return_failed"] = True
+                args["return_msg_key"] = "commands.fly_armor.unknown_key"
+                return
+            defaults = {}
+            for rk in reset_keys:
+                defaults[self.FULL_KEY_PREFIX + rk] = CLIENT_SETTING_VALUE_SCHEMA[rk][1]
+            self._send_client_setting_cmd(playerId, {"action": "reset", "defaults": defaults})
+            args["return_msg_key"] = "commands.fly_armor.reset.ok"
+            self._audit("clientsetting_reset %s (%d)" % (full_key, len(reset_keys)))
+            return
+
+    def on_client_setting_reply(self, args):
+        """客户端回执本机设置读写结果，由服务端统一回显（避免前置缺失时误报成功）。"""
+        playerId = args.get('playerId')
+        action = args.get('action')
+        if not playerId:
+            return
+        if args.get('error'):
+            self._send_tellraw(playerId, "[飞行之羽] 客户端设置不可用：未安装前置模组")
+            return
+        if action in ("set", "get"):
+            self._echo_or_log((playerId,), playerId,
+                              "[飞行之羽] %s = %s" % (args.get('key', ""), args.get('value')))
+            return
+        if action == "reset":
+            self._echo_or_log((playerId,), playerId,
+                              "[飞行之羽] 已重置 %d 项客户端设置" % int(args.get('count', 0)))
+            return
+        if action == "list":
+            page = self._pending_client_list_page.pop(playerId, 1)
+            values = args.get('values') or {}
+            items = sorted("%s = %s" % (k, v) for k, v in values.items())
+            self._echo_setting_list(playerId, items, page, CLIENT_SUB_KEY)
+            return
+
     def on_custom_command(self, args):
         command = args.get('command')
-        if command not in self.COMMAND_NAMES:
+        if command in self.CLIENT_COMMAND_NAMES:
+            sub, action = CLIENT_SUB_KEY, command.split("_", 1)[1]
+        elif command in self.SERVER_COMMAND_NAMES:
+            sub, action = SERVER_SUB_KEY, command.split("_", 1)[1]
+        else:
             return  # 静默：非本模组指令，绝不设置任何返回字段
         arg_map = {}
         for a in args.get('args', []) or []:
@@ -616,34 +897,49 @@ class FlyArmorServerSystem(ServerSystem):
                 arg_map[a.get('name')] = a.get('value')
         origin = args.get('origin') or {}
         playerId = origin.get('entityId')
-        full_key = str(arg_map.get('键', "") or "")
-        prefix_raw = arg_map.get('前缀')
-        # 键前缀路由：不属于本模组的一律静默
-        if command != "setting_list":
-            if not full_key.startswith(self.FULL_KEY_PREFIX):
-                return
-        else:
-            if prefix_raw and not str(prefix_raw).startswith(self.FULL_KEY_PREFIX):
-                return
-        raw_target = arg_map.get('目标')
-        target_ids = self._command_target_ids(origin, playerId, raw_target)
-        # schema 键（不含 "fly_armor." 前缀）用于键表匹配
-        rest = full_key[len(self.FULL_KEY_PREFIX):] if full_key.startswith(self.FULL_KEY_PREFIX) else full_key
 
-        # 写操作权限：玩家需 OP(>=2)；命令方块受 allow_command_block_setting 控制
-        is_write = command in ("setting_set", "setting_reset")
-        if is_write:
+        # 服务端指令：全部动作（含查询/列表）都需管理员
+        if sub == SERVER_SUB_KEY:
             if playerId:
                 if self._get_operation_level(playerId) < 2:
                     args["return_failed"] = True
                     args["return_msg_key"] = "commands.fly_armor.no_permission"
                     return
-            elif not self.mod_settings.get("allow_command_block_setting", True):
+            elif action in ("set", "reset") and not self.mod_settings.get("allow_command_block_setting", True):
+                # 命令方块/控制台：写操作受 allow_command_block_setting 控制
                 args["return_failed"] = True
                 args["return_msg_key"] = "commands.fly_armor.cb_disabled"
                 return
 
-        if command == "setting_set":
+        if action == "list":
+            self._handle_setting_list(args, arg_map, playerId, sub)
+            return
+
+        full_key = str(arg_map.get('键', "") or "")
+        # 键前缀路由：非本模组一律静默
+        if not full_key.startswith(self.FULL_KEY_PREFIX):
+            return
+        rest_pref = full_key[len(self.FULL_KEY_PREFIX):]
+        key_sub = rest_pref.split(".")[0]
+        if self._schema_table_of(key_sub) is None:
+            return  # 静默：未知子卡片
+        if key_sub != sub:
+            # 键与所用指令不同边：明确提示该改用哪条指令
+            self._fail_wrong_sub(args, sub)
+            return
+
+        # 客户端设置：无需管理员权限，仅可管理自己的
+        if sub == CLIENT_SUB_KEY:
+            self._handle_client_setting(args, action, rest_pref, full_key, arg_map, playerId)
+            return
+
+        # ===== 以下为服务端设置（权限已在上方统一校验） =====
+        raw_target = arg_map.get('目标')
+        target_ids = self._command_target_ids(origin, playerId, raw_target)
+        # schema 键（不含 "fly_armor." 前缀）用于键表匹配
+        rest = self._schema_key(full_key) if action != "reset" else ""
+
+        if action == "set":
             if rest not in SETTING_VALUE_SCHEMA:
                 args["return_failed"] = True
                 args["return_msg_key"] = "commands.fly_armor.unknown_key"
@@ -653,8 +949,7 @@ class FlyArmorServerSystem(ServerSystem):
                 args["return_failed"] = True
                 args["return_msg_key"] = "commands.fly_armor.bad_value"
                 self._echo_or_log(target_ids, playerId, "[飞行之羽] 值格式不合法：%s 需要 %s"
-                                  % (self._setting_key_from_full(full_key),
-                                     SETTING_VALUE_SCHEMA[rest][0]))
+                                  % (self._item_of_schema(rest), SETTING_VALUE_SCHEMA[rest][0]))
                 self._audit("setting_set 失败(%s) %s" % (res, full_key))
                 return
             self._mirror_sync(target_ids, full_key, res)
@@ -663,24 +958,24 @@ class FlyArmorServerSystem(ServerSystem):
             self._audit("setting_set %s = %s" % (full_key, res))
             return
 
-        if command == "setting_get":
+        if action == "get":
             if rest not in SETTING_VALUE_SCHEMA:
                 args["return_failed"] = True
                 args["return_msg_key"] = "commands.fly_armor.unknown_key"
                 return
-            item = self._setting_key_from_full(full_key)
-            cur = self.mod_settings.get(item, SETTING_VALUE_SCHEMA[rest][1])
+            cur = self.mod_settings.get(self._item_of_schema(rest), SETTING_VALUE_SCHEMA[rest][1])
             self._echo_or_log(target_ids, playerId, "[飞行之羽] %s = %s" % (full_key, cur))
             args["return_msg_key"] = "commands.fly_armor.get.ok"
             return
 
-        if command == "setting_reset":
-            if rest == "server.default":
+        if action == "reset":
+            # 重置支持前缀（2 段整组 / 3 段分组 / 4 段单项），不能用固定 4 段的 _schema_key
+            if rest_pref == SERVER_SUB_KEY:
                 reset_keys = list(SETTING_VALUE_SCHEMA.keys())
-            elif rest in SETTING_VALUE_SCHEMA:
-                reset_keys = [rest]
+            elif rest_pref in SETTING_VALUE_SCHEMA:
+                reset_keys = [rest_pref]
             else:
-                reset_keys = [k for k in SETTING_VALUE_SCHEMA if k.startswith(rest)]
+                reset_keys = [k for k in SETTING_VALUE_SCHEMA if k.startswith(rest_pref)]
             if not reset_keys:
                 args["return_failed"] = True
                 args["return_msg_key"] = "commands.fly_armor.unknown_key"
@@ -694,27 +989,6 @@ class FlyArmorServerSystem(ServerSystem):
             self._echo_or_log(target_ids, playerId, "[飞行之羽] 已重置 %d 项" % n)
             args["return_msg_key"] = "commands.fly_armor.reset.ok"
             self._audit("setting_reset %s (%d)" % (full_key, n))
-            return
-
-        if command == "setting_list":
-            lines = []
-            prefix = str(prefix_raw) if prefix_raw else ""
-            for k in SETTING_VALUE_SCHEMA:
-                full = self.FULL_KEY_PREFIX + k
-                if prefix and not full.startswith(prefix):
-                    continue
-                item = k[len(self.SETTING_KEY_PREFIX):] if k.startswith(self.SETTING_KEY_PREFIX) else k
-                cur = self.mod_settings.get(item, SETTING_VALUE_SCHEMA[k][1])
-                lines.append("[飞行之羽] %s = %s" % (full, cur))
-            lines.sort()
-            if not lines:
-                text = "[飞行之羽] 无匹配设置项"
-            elif len(lines) > 8 and not prefix:
-                text = "[飞行之羽] 共 %d 项，可加前缀过滤：" % len(lines) + "\n" + "\n".join(lines)
-            else:
-                text = "\n".join(lines)
-            self._echo_or_log(target_ids, playerId, text)
-            args["return_msg_key"] = "commands.fly_armor.list.ok"
             return
 
     # ==================== 通用工具方法 ====================
@@ -806,6 +1080,22 @@ class FlyArmorServerSystem(ServerSystem):
 
     def _armor_key(self, item_name):
         return ARMOR_KEY_BY_ITEM.get(item_name)
+
+    def _flight_enabled(self, item_name):
+        """该装备是否启用飞行（逐装备，关闭则装备后不再提供飞行能力）。"""
+        k = self._armor_key(item_name)
+        return True if k is None else bool(self.mod_settings.get("enable_flight_" + k, True))
+
+    def can_fly_with_armor(self, playerId):
+        """当前装备能否提供飞行：该羽已启用飞行 且 耐久未耗尽。
+
+        仅用于飞行能力的授予判定；状态效果与耐久消耗仍按 is_fly_armor_usable 判断，
+        避免关闭飞行时连带关掉被动效果。
+        """
+        item_name, _ = self.get_armor_info(playerId)
+        if not item_name:
+            return False
+        return self._flight_enabled(item_name) and self.is_fly_armor_usable(playerId)
 
     def _flight_durability_enabled(self, item_name):
         """该装备是否开启飞行耐久消耗（逐装备）。"""
@@ -1324,7 +1614,7 @@ class FlyArmorServerSystem(ServerSystem):
             self.set_player_fly(playerId, True)
             return
         if item_name in FLY_ARMOR_CONFIG:
-            if self.is_fly_armor_usable(playerId):
+            if self.can_fly_with_armor(playerId):
                 self.set_player_fly(playerId, True)
             else:
                 self.set_player_fly(playerId, False)
@@ -1360,7 +1650,7 @@ class FlyArmorServerSystem(ServerSystem):
                 gameComp.AddTimer(0.1, lambda pid=playerId: self.set_player_fly(pid, True))
             else:
                 def try_give_fly(pid):
-                    if self.is_fly_armor_usable(pid):
+                    if self.can_fly_with_armor(pid):
                         self.set_player_fly(pid, True)
                     else:
                         self.set_player_fly(pid, False)
@@ -1388,10 +1678,10 @@ class FlyArmorServerSystem(ServerSystem):
             flying = flyComp.IsPlayerFlying() if flyComp else False
             if not is_creative:
                 if item_name:
-                    usable = self.is_fly_armor_usable(pid)
-                    if usable and not self.player_fly_state.get(pid):
+                    can_fly = self.can_fly_with_armor(pid)
+                    if can_fly and not self.player_fly_state.get(pid):
                         self.set_player_fly(pid, True)
-                    elif not usable and self.player_fly_state.get(pid):
+                    elif not can_fly and self.player_fly_state.get(pid):
                         self.set_player_fly(pid, False)
                 else:
                     if self.player_fly_state.get(pid):

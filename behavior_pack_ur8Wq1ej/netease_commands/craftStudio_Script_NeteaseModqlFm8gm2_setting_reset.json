@@ -1,7 +1,7 @@
 {
 	"format_version": "0.0.1",
 	"name": "setting_reset",
-	"description": "重置模组设置项：/setting_reset <键或分组前缀> [目标]",
+	"description": "重置服务端设置项（需管理员）：/setting_reset <键或分组前缀> [目标]。键形如 fly_armor.server...；客户端设置请用 clientsetting_reset",
 	"permission_level": "game_directors",
 	"args": [
 		{"name": "键", "type": "str", "default": ""},

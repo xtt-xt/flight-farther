@@ -14,7 +14,7 @@ MAIN_CARD_ICON = "textures/ui/xtt_fly_feather"  # 主卡片图标（本模组资
 
 # 服务端子卡片下的中间卡片（按主题分类，icon 取自前置资源包 textures/ui/icon/）
 SERVER_MIDDLE_GROUPS = [
-    ("fly_effect", "状态效果", "textures/ui/icon/behaviour-packs-icon"),
+    ("fly_effect", "功能设置", "textures/ui/icon/behaviour-packs-icon"),
     ("fly_durability", "耐久设置", "textures/ui/icon/resource-packs-icon"),
     ("fly_repair", "修复设置", "textures/ui/icon/advanced-icon"),
     ("fly_recipe", "配方", "textures/ui/icon/general-icon"),
@@ -84,6 +84,17 @@ XP_OPTION = "xpref_"
 MATERIAL_TOGGLE_ID = "fly_repair_material"  # 修复所需物品id
 MATERIAL_OPTION = "matref_"
 
+# ===== 功能设置：状态效果 / 启用功能 两个组合开关弹窗（CardToggle） =====
+EFFECT_TOGGLE_ID = "fly_effects"        # 状态效果数据集 id
+EFFECT_OPTION = "eff_"                  # 选项 id 前缀 + 设置项后缀
+EFFECT_OPTIONS = (                      # (设置项, 物品图标, 说明)
+    ("enable_ender_effect", "fly_feather:ender_feather", "末影之羽状态效果"),
+    ("enable_ender_full", "fly_feather:ender_feather", "末影之羽完整版增益"),
+    ("enable_swift_effect", "fly_feather:swift_feather", "迅捷之羽状态效果"),
+)
+FLIGHT_TOGGLE_ID = "fly_flight_enable"  # 启用功能数据集 id
+FLIGHT_OPTION = "flyen_"                # 选项 id 前缀 + 装备key
+
 # ===== 权限管理：锁定模式 + 组合开关弹窗（CardToggle） =====
 PERMISSION_TOGGLE_ID = "fly_permission_levels"  # 组合开关数据集 id
 PERMISSION_OPTION = "perm_"  # 选项 id 前缀（选项 id = 前缀 + 权限档）
@@ -99,6 +110,8 @@ ITEM_GROUPS = {
     "enable_ender_effect": ("server", "fly_effect"),
     "enable_ender_full": ("server", "fly_effect"),
     "enable_swift_effect": ("server", "fly_effect"),
+    "open_effects": ("server", "fly_effect"),
+    "open_flight": ("server", "fly_effect"),
     "enable_real_time_durability": ("server", "fly_durability"),
     "enable_recipe_fly": ("server", "fly_recipe"),
     "enable_recipe_ender": ("server", "fly_recipe"),
@@ -110,6 +123,7 @@ ITEM_GROUPS = {
     SERVER_COPY_BTN: ("server", "fly_debug"),
 }
 for _armor_key in ARMOR_KEYS:
+    ITEM_GROUPS["enable_flight_" + _armor_key] = ("server", "fly_effect")
     ITEM_GROUPS["enable_durability_" + _armor_key] = ("server", "fly_durability")
     ITEM_GROUPS["enable_unbreaking_" + _armor_key] = ("server", "fly_durability")
 ITEM_GROUPS["open_flight_dur"] = ("server", "fly_durability")
@@ -130,12 +144,28 @@ for _rcard in ("fly_effect", "fly_durability", "fly_repair", "fly_recipe"):
     ITEM_GROUPS["reset_" + _rcard] = ("server", _rcard)
 # 权限管理
 ITEM_GROUPS["permission_lock_mode"] = ("server", "fly_permission")
+ITEM_GROUPS["permission_allow_nonadmin"] = ("server", "fly_permission")
 ITEM_GROUPS["open_permission"] = ("server", "fly_permission")
 for _role, _name in PERMISSION_ROLES:
     ITEM_GROUPS["permission_" + _role] = ("server", "fly_permission")
 
+# 「权限管理」页的全部内容项：整页按服务端下发的可操作权锁定
+PERMISSION_PAGE_KEYS = ["permission_lock_mode", "permission_allow_nonadmin",
+                        "open_permission"]
+PERMISSION_PAGE_KEYS += ["permission_" + _role for _role, _n in PERMISSION_ROLES]
+
 # 服务端全局设置内容项（需按服务端 OP 权限锁定）
 LOCKABLE_KEYS = [k for k, (sk, _) in ITEM_GROUPS.items() if sk == "server"]
+
+# ==================== 客户端设置指令 ====================
+# 客户端设置项 -> (中间卡片id, 类型, 默认值)，与服务端 CLIENT_SETTING_VALUE_SCHEMA 一一对应。
+# 这些设置存于各玩家本机（前置本地存储），指令只能由本人修改自己的。
+CLIENT_SETTING_SCHEMA = {
+    "client_log_output": ("fly_debug_client", "bool", False),
+}
+CLIENT_SETTING_CMD_EVENT = "Script_NeteaseModqlFm8gm2_ClientSettingCommand"   # 服务端 -> 客户端
+CLIENT_SETTING_REPLY_EVENT = "Script_NeteaseModqlFm8gm2_ClientSettingReply"   # 客户端 -> 服务端
+CLIENT_SUB_KEY = "client"
 
 
 class FlyArmorClientSystem(ClientSystem):
@@ -160,6 +190,7 @@ class FlyArmorClientSystem(ClientSystem):
         self._card_getsetting = None
         self._card_ready = False
         self.has_permission = False
+        self._can_edit_permission = False  # 服务端下发的「权限管理」页可操作权
         self._client_log_enabled = False  # 客户端调试日志输出开关
         self._card_regmenu = None
         self._last_synced_settings = None  # 最近一次已同步到 UI 的服务端设置
@@ -178,6 +209,9 @@ class FlyArmorClientSystem(ClientSystem):
         # 自定义指令镜像刷新：指令在服务端改值后，刷新本地面板镜像（无前置时自动忽略）
         self.ListenForEvent("FlyArmorServer", "FlyArmorServerSystem",
                             "Script_NeteaseModqlFm8gm2_SettingMirrorSync", self, self.on_mirror_sync)
+        # 客户端设置指令：服务端下发的读写本机客户端设置请求
+        self.ListenForEvent("FlyArmorServer", "FlyArmorServerSystem",
+                            CLIENT_SETTING_CMD_EVENT, self, self.on_client_setting_command)
 
     # ==================== 前置(CardRegistry)设置卡片注册 ====================
 
@@ -222,6 +256,8 @@ class FlyArmorClientSystem(ClientSystem):
             return
 
         self._register_settings_cards()
+        self._register_effects_toggle()
+        self._register_flight_toggle()
         self._register_flight_duration_toggle()
         self._register_unbreaking_toggle()
         self._register_repairable_toggle()
@@ -253,17 +289,15 @@ class FlyArmorClientSystem(ClientSystem):
         # 注册"导出数量"折叠菜单（客户端/服务端复制日志共用）
         self._card_regmenu(EXPORT_COUNT_MENU, "导出数量", EXPORT_COUNT_OPTIONS)
 
-        # ===== 服务端：状态效果 =====
+        # ===== 服务端：功能设置（状态效果 / 启用功能，均用 CardToggle 弹窗） =====
         inst = self._card_create(MAIN_CARD_ID, "server", "fly_effect")
-        inst.AddSwitch("enable_ender_effect", "启用末影之羽的被动状态效果（默认开启）",
-                       litle="末影之羽状态效果",
-                       default_value=True, on_toggle=self.on_toggle_ender)
-        inst.AddSwitch("enable_ender_full", "开启后在所有维度获得末地级别的增益（默认关闭）",
-                       litle="末影之羽完整版",
-                       default_value=False, on_toggle=self.on_toggle_ender_full)
-        inst.AddSwitch("enable_swift_effect", "启用迅捷之羽的被动状态效果（默认开启）",
-                       litle="迅捷之羽状态效果",
-                       default_value=True, on_toggle=self.on_toggle_swift)
+        inst.AddText("effect_note", "", "各羽的状态效果与飞行功能分别弹窗管理")
+        inst.AddButton("open_effects", "逐羽设置是否启用被动状态效果",
+                       "打开", litle="状态效果",
+                       on_click=self.on_open_effects_toggle)
+        inst.AddButton("open_flight", "逐羽设置装备后是否启用飞行能力",
+                       "打开", litle="启用功能",
+                       on_click=self.on_open_flight_toggle)
         inst.AddResetButton("reset_fly_effect", on_click=self.on_reset_page)
 
         # ===== 服务端：耐久设置 =====
@@ -325,6 +359,10 @@ class FlyArmorClientSystem(ClientSystem):
                        "开启后仅操作员（房主/管理员）可修改设置；关闭后可自定义允许的权限档",
                        litle="锁定模式",
                        default_value=True, on_toggle=self.on_lock_mode_toggle)
+        inst.AddSwitch("permission_allow_nonadmin",
+                       "开启后，按权限档放行的非管理员也可操作本权限管理页；关闭时即使权限档放行也无法操作（默认关闭）",
+                       litle="非管理员可操作权限管理",
+                       default_value=False, on_toggle=self.on_toggle_item)
         inst.AddButton("open_permission", "设置允许修改模组设置的权限档",
                        "打开", litle="允许的权限",
                        on_click=self.on_open_permission_toggle)
@@ -425,6 +463,66 @@ class FlyArmorClientSystem(ClientSystem):
             self._card_setlocked(key, locked)
         except Exception:
             pass
+
+    # ==================== 功能设置：状态效果 / 启用功能 组合开关弹窗（CardToggle） ====================
+
+    def _register_effects_toggle(self):
+        """注册"状态效果"组合开关数据集（multi 多选 + 底部应用按钮）。"""
+        if not self._card_regtoggle:
+            return
+        self._card_regtoggle(EFFECT_TOGGLE_ID, "状态效果", mode="multi")
+        for item, icon, desc in EFFECT_OPTIONS:
+            self._card_addtogopt(EFFECT_TOGGLE_ID, EFFECT_OPTION + item, icon,
+                                 desc=desc, default_on=(item != "enable_ender_full"))
+        self._card_addtogbtn(EFFECT_TOGGLE_ID, "应用到服务端",
+                             self.on_apply_effects_toggle)
+
+    def on_open_effects_toggle(self, screenNode, item_id):
+        """打开"状态效果"弹窗前，用当前设置同步各选项状态。"""
+        if not self._card_settogstate or not self._card_opentoggle:
+            return
+        for item, _icon, _desc in EFFECT_OPTIONS:
+            cur = self._read_setting_bool(item, item != "enable_ender_full")
+            self._card_settogstate(EFFECT_TOGGLE_ID, EFFECT_OPTION + item, cur)
+        self._card_opentoggle(EFFECT_TOGGLE_ID)
+
+    def on_apply_effects_toggle(self, screenNode, toggle_id, state_dict):
+        """弹窗底部"应用到服务端"：写回逐羽状态效果开关。"""
+        for item, _icon, _desc in EFFECT_OPTIONS:
+            opt = EFFECT_OPTION + item
+            self._send_setting_to_server(item, bool(state_dict.get(opt, True)))
+        if self._card_closetoggle:
+            self._card_closetoggle()
+
+    def _register_flight_toggle(self):
+        """注册"启用功能"组合开关数据集（multi 多选 + 底部应用按钮）。"""
+        if not self._card_regtoggle:
+            return
+        self._card_regtoggle(FLIGHT_TOGGLE_ID, "启用功能", mode="multi")
+        for ak in ARMOR_KEYS:
+            self._card_addtogopt(FLIGHT_TOGGLE_ID, FLIGHT_OPTION + ak,
+                                 ARMOR_KEY_TO_ITEM[ak], desc=ARMOR_DISPLAY[ak],
+                                 default_on=True)
+        self._card_addtogbtn(FLIGHT_TOGGLE_ID, "应用到服务端",
+                             self.on_apply_flight_toggle)
+
+    def on_open_flight_toggle(self, screenNode, item_id):
+        """打开"启用功能"弹窗前，用当前设置同步各选项状态。"""
+        if not self._card_settogstate or not self._card_opentoggle:
+            return
+        for ak in ARMOR_KEYS:
+            cur = self._read_setting_bool("enable_flight_" + ak, True)
+            self._card_settogstate(FLIGHT_TOGGLE_ID, FLIGHT_OPTION + ak, cur)
+        self._card_opentoggle(FLIGHT_TOGGLE_ID)
+
+    def on_apply_flight_toggle(self, screenNode, toggle_id, state_dict):
+        """弹窗底部"应用到服务端"：写回逐羽是否启用飞行。"""
+        for ak in ARMOR_KEYS:
+            opt = FLIGHT_OPTION + ak
+            state = bool(state_dict.get(opt, True))
+            self._send_setting_to_server("enable_flight_" + ak, state)
+        if self._card_closetoggle:
+            self._card_closetoggle()
 
     # ==================== 飞行耐久组合开关弹窗（CardToggle） ====================
 
@@ -697,18 +795,27 @@ class FlyArmorClientSystem(ClientSystem):
         }
         return icons.get(role, "minecraft:paper")
 
-    def _update_permission_locks(self):
-        """锁定模式下，锁定"允许的权限"按钮；关闭锁定时解锁，便于打开弹窗配置。"""
+    def _refresh_permission_page_locks(self):
+        """刷新「权限管理」页锁定。
+
+        整页按服务端下发的 canEditPermission 锁定：非管理员未获「非管理员可操作权限管理」
+        放行时，即使其它设置已解锁，本页仍保持锁定（防止自行提权）；
+        锁定模式开启时，其支配的「允许的权限」「非管理员可操作权限管理」一并锁定。
+        """
         if not self._card_ready:
             return
-        locked = self._read_setting_bool("permission_lock_mode", True)
-        self._apply_item_lock("open_permission", locked)
+        page_locked = not self._can_edit_permission
+        for key in PERMISSION_PAGE_KEYS:
+            self._apply_item_lock(key, page_locked)
+        if self._read_setting_bool("permission_lock_mode", True):
+            self._apply_item_lock("open_permission", True)
+            self._apply_item_lock("permission_allow_nonadmin", True)
 
     def on_lock_mode_toggle(self, screenNode, item_id, state):
-        """锁定模式开关：发服务端 + 刷新权限按钮联动锁定。"""
+        """锁定模式开关：发服务端 + 刷新权限页联动锁定。"""
         self._send_setting_to_server(item_id, state)
         self._set_ui_value("permission_lock_mode", bool(state))
-        self._update_permission_locks()
+        self._refresh_permission_page_locks()
 
     def on_open_permission_toggle(self, screenNode, item_id):
         """打开"允许的权限"弹窗前，用当前设置同步各选项状态。"""
@@ -745,6 +852,7 @@ class FlyArmorClientSystem(ClientSystem):
     def _apply_permission_args(self, args):
         """应用权限事件参数，必须在卡片注册完成后调用"""
         has_perm = args.get("hasPermission", False)
+        can_edit_perm = args.get("canEditPermission", False)
         settings = args.get("settings", {})
         # 同步服务端持久化设置到客户端UI（仅在实际发生变化时，避免轮询刷屏/重复写入）
         if settings and self._card_ready:
@@ -755,15 +863,13 @@ class FlyArmorClientSystem(ClientSystem):
                 self._last_synced_settings = dict(settings)
                 self._client_debug_print("已按服务端设置同步 UI 值")
         # 权限状态变化时才刷新锁定
-        if self.has_permission != has_perm:
+        if self.has_permission != has_perm or self._can_edit_permission != can_edit_perm:
             self.has_permission = has_perm
-            self._client_debug_print("权限变化 -> hasPermission=%s" % has_perm)
-            if has_perm:
-                self._lock_all_controls(False)
-                self._update_permission_locks()
-            else:
-                self._lock_all_controls(True)
-                self._update_permission_locks()
+            self._can_edit_permission = can_edit_perm
+            self._client_debug_print("权限变化 -> hasPermission=%s canEditPermission=%s"
+                                     % (has_perm, can_edit_perm))
+            self._lock_all_controls(not has_perm)
+            self._refresh_permission_page_locks()
 
     def on_push_screen(self, args):
         """监听原生界面入栈（包括前置设置界面），每次打开都重新请求权限刷新锁定状态"""
@@ -788,15 +894,6 @@ class FlyArmorClientSystem(ClientSystem):
         """通用逐装备开关回调：耐久消耗等开关立即发服务端。"""
         self._send_setting_to_server(item_id, state)
 
-    def on_toggle_ender(self, screenNode, item_id, state):
-        self._send_setting_to_server(item_id, state)
-
-    def on_toggle_swift(self, screenNode, item_id, state):
-        self._send_setting_to_server(item_id, state)
-
-    def on_toggle_ender_full(self, screenNode, item_id, state):
-        self._send_setting_to_server(item_id, state)
-
     def on_toggle_recipe(self, screenNode, item_id, state):
         """配方开关回调：修改服务端全局配置，重启世界后生效。"""
         self._send_setting_to_server(item_id, state)
@@ -813,20 +910,93 @@ class FlyArmorClientSystem(ClientSystem):
             self._client_debug_print("服务端回退 %s = %s" % (key, value))
 
     def on_mirror_sync(self, args):
-        """自定义指令镜像刷新：把完整键 fly_armor.server.default.<item> 还原为 item 并写入本地镜像。
+        """自定义指令镜像刷新：把完整键 fly_armor.server.<mid>.<item> 还原为 item 并写入本地镜像。
 
         只同步面板镜像，不写服务端、不回执、不鉴权；面板未注册（无前置）时自动忽略。
         """
         full_key = args.get("key", "")
         value = args.get("value")
-        prefix = "fly_armor.server.default."
-        if not full_key.startswith(prefix) or value is None:
+        if value is None:
             return
-        item = full_key[len(prefix):]
-        if not item:
-            return
+        parts = full_key.split(".")
+        if len(parts) == 4 and parts[0] == "fly_armor" and parts[1] == "server":
+            item = parts[3]
+            if item:
+                self._set_ui_value(item, value)
+                self._client_debug_print("指令镜像 %s = %s" % (item, value))
+
+    # ==================== 客户端设置指令（服务端下发） ====================
+
+    def _write_client_setting(self, full_key, value):
+        """把指令下发的值写入本机本地存储并刷新 UI（仅作用于本玩家）。"""
+        item = self._client_setting_item(full_key)
+        if item is None:
+            return False
         self._set_ui_value(item, value)
-        self._client_debug_print("指令镜像 %s = %s" % (item, value))
+        if item == "client_log_output":
+            self._client_log_enabled = bool(value)
+        self._client_debug_print("指令写入客户端设置 %s = %s" % (item, value))
+        return True
+
+    def _client_setting_item(self, full_key):
+        """fly_armor.client.<mid>.<item> -> item；不合法/非本模组设置项返回 None。"""
+        parts = full_key.split(".")
+        if len(parts) != 4 or parts[0] != "fly_armor" or parts[1] != CLIENT_SUB_KEY:
+            return None
+        item = parts[3]
+        return item if item in CLIENT_SETTING_SCHEMA else None
+
+    def _read_client_setting(self, item):
+        """读取本机某客户端设置项的当前值（无前置时回退默认值）。"""
+        mid, _type, default = CLIENT_SETTING_SCHEMA[item]
+        if not self._card_ready or not self._card_getsetting:
+            return default
+        try:
+            v = self._card_getsetting(MAIN_CARD_ID, CLIENT_SUB_KEY, mid, item, default)
+            return default if v is None else v
+        except Exception:
+            return default
+
+    def _reply_client_setting(self, payload):
+        payload["playerId"] = clientApi.GetLocalPlayerId()
+        self.NotifyToServer(CLIENT_SETTING_REPLY_EVENT, payload)
+
+    def on_client_setting_command(self, args):
+        """服务端下发的客户端设置指令：读写本机本地存储，结果回执给服务端统一回显。"""
+        action = args.get("action")
+        if not self._card_ready:
+            # 前置未安装：无法读写本地设置，回执失败让服务端提示
+            self._reply_client_setting({"action": action, "key": args.get("key", ""),
+                                        "error": True})
+            return
+        if action == "set":
+            full_key = args.get("key", "")
+            self._write_client_setting(full_key, args.get("value"))
+            self._reply_client_setting({"action": "set", "key": full_key,
+                                        "value": args.get("value")})
+            return
+        if action == "reset":
+            n = 0
+            for full_key, value in (args.get("defaults") or {}).items():
+                if self._write_client_setting(full_key, value):
+                    n += 1
+            self._reply_client_setting({"action": "reset", "count": n})
+            return
+        if action == "get":
+            full_key = args.get("key", "")
+            item = self._client_setting_item(full_key)
+            if item is None:
+                return
+            self._reply_client_setting({"action": "get", "key": full_key,
+                                        "value": self._read_client_setting(item)})
+            return
+        if action == "list":
+            values = {}
+            for item, (mid, _type, _default) in CLIENT_SETTING_SCHEMA.items():
+                full_key = "fly_armor.%s.%s.%s" % (CLIENT_SUB_KEY, mid, item)
+                values[full_key] = self._read_client_setting(item)
+            self._reply_client_setting({"action": "list", "values": values})
+            return
 
     def on_reset_page(self, screenNode, item_id):
         """「重置本页」：重置当前服务端分页为默认，并通知服务端持久化 + 推送。"""
@@ -844,8 +1014,8 @@ class FlyArmorClientSystem(ClientSystem):
             "playerId": localPlayerId,
             "middle_card_id": mid
         })
-        # 重置后权限按钮联动锁定按默认锁模式刷新
-        self._update_permission_locks()
+        # 重置后按默认锁模式刷新权限页联动锁定
+        self._refresh_permission_page_locks()
 
     def on_toggle_client_log(self, screenNode, item_id, state):
         """客户端调试日志输出开关回调：立即切换，不发给服务端。"""

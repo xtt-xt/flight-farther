@@ -1,9 +1,0 @@
-{
-	"format_version": "0.0.1",
-	"name": "setting_list",
-	"description": "列出本模组可被指令修改的设置键及当前值",
-	"permission_level": "any",
-	"args": [
-		{"name": "前缀", "type": "str", "default": ""}
-	]
-}

@@ -1,65 +1,52 @@
-# ========== 网易基岩版开发环境文件 ==========
-# MC Studio / Nemo Studio 工程配置
+# ========== MC Studio / Nemo Studio 工程元数据 ==========
+.mcs
+.mcs/
+.trae
+.trae/
+AGENTS.md
 .mcdev.json
 studio.json
 work.mcscfg
-world_resource_packs.json
 world_behavior_packs.json
+world_resource_packs.json
+world_icon.jpeg
 
-# AI 助手 / 编辑器临时目录
-.trae/
-docs/tmp/
-
-# 编辑器临时文件
-*.tmp
-*.temp
-*.bak
-*.swp
-*~
-
-# ========== 操作系统文件 ==========
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# Linux
-.nfs*
-
-# ========== 压缩包 / 构建产物 ==========
-*.zip
-*.mcaddon
-*.mcpack
-*.mcworld
-*.mctemplate
-/build/
-/dist/
+# ========== 旧版平铺目录（内容已并入 behavior_pack_*/resource_pack_*）==========
+/behavior_pack/
+/resource_pack/
 
 # ========== Python ==========
 __pycache__/
 *.py[cod]
 *.pyo
 
-# ========== IDE / 编辑器 ==========
-# VS Code
+# ========== 打包产物 ==========
+*.zip
+*.mcaddon
+*.mcpack
+*.mcworld
+*.mctemplate
+/out/
+/dist/
+/build/
+
+# ========== 系统 / 编辑器 ==========
+.DS_Store
+Thumbs.db
+Desktop.ini
+.nfs*
 .vscode/
 !.vscode/settings.json
-!.vscode/extensions.json
-
-# 其他编辑器
 .idea/
 *.sublime-*
-
-# ========== 日志文件 ==========
 *.log
 logs/
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
 
-# ========== 测试文件 ==========
+# ========== 测试 ==========
 test/
 tests/

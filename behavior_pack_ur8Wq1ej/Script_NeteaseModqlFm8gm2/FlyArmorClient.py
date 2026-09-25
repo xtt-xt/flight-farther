@@ -1076,8 +1076,9 @@ class FlyArmorClientSystem(ClientSystem):
         self._refresh_permission_page_locks()
 
     def on_toggle_client_log(self, screenNode, item_id, state):
-        """客户端调试日志输出开关回调：立即切换，不发给服务端。"""
+        """客户端调试日志输出开关回调：立即切换，并落一份本机本地存储（无前置时也保留）。"""
         self._client_log_enabled = bool(state)
+        self._local_client_set("client_log_output", bool(state))
 
     def _read_copy_count(self, sub_key, card_id, item_id):
         """读取复制数量的折叠菜单当前选中条数（取不到回退 200）。"""

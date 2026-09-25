@@ -871,7 +871,7 @@ class FlyArmorServerSystem(ServerSystem):
         if not playerId:
             return
         if args.get('error'):
-            self._send_tellraw(playerId, "[飞行之羽] 客户端设置不可用：未安装前置模组")
+            self._send_tellraw(playerId, "[飞行之羽] 客户端设置不可用：本机本地存储读写失败")
             return
         if action in ("set", "get"):
             self._echo_or_log((playerId,), playerId,
@@ -950,9 +950,16 @@ class FlyArmorServerSystem(ServerSystem):
             ok, res = self.ApplySetting(rest, arg_map.get('值'), source="command")
             if not ok:
                 args["return_failed"] = True
-                args["return_msg_key"] = "commands.fly_armor.bad_value"
-                self._echo_or_log(target_ids, playerId, "[飞行之羽] 值格式不合法：%s 需要 %s"
-                                  % (self._item_of_schema(rest), SETTING_VALUE_SCHEMA[rest][0]))
+                if res == "bad_item":
+                    # 物品id无效与「类型不符」分开提示：否则会误导成「需要 str」
+                    args["return_msg_key"] = "commands.fly_armor.bad_item"
+                    self._echo_or_log(target_ids, playerId,
+                                      "[飞行之羽] 物品id无效：%s = %s（已保持不变）"
+                                      % (self._item_of_schema(rest), arg_map.get('值')))
+                else:
+                    args["return_msg_key"] = "commands.fly_armor.bad_value"
+                    self._echo_or_log(target_ids, playerId, "[飞行之羽] 值格式不合法：%s 需要 %s"
+                                      % (self._item_of_schema(rest), SETTING_VALUE_SCHEMA[rest][0]))
                 self._audit("fly_feather_set 失败(%s) %s" % (res, full_key))
                 return
             self._mirror_sync(target_ids, full_key, res)

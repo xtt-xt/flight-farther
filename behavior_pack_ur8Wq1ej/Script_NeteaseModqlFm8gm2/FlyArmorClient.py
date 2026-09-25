@@ -166,6 +166,11 @@ CLIENT_SETTING_SCHEMA = {
 CLIENT_SETTING_CMD_EVENT = "Script_NeteaseModqlFm8gm2_ClientSettingCommand"   # 服务端 -> 客户端
 CLIENT_SETTING_REPLY_EVENT = "Script_NeteaseModqlFm8gm2_ClientSettingReply"   # 客户端 -> 服务端
 CLIENT_SUB_KEY = "client"
+# ===== 客户端设置的本机存储（原版 API：ConfigCompClient，不依赖前置）=====
+# 说明：装了前置时，值会同时写进前置面板的存储（保持面板与指令一致）；
+#       没装前置时只用这里的本地存储，因此客户端设置指令不依赖前置。
+CLIENT_SETTING_CONFIG_NAME = "Script_NeteaseModqlFm8gm2_client_state"
+CLIENT_SETTING_IS_GLOBAL = False  # False = 存档配置（重进世界保留，跨存档不共享）
 
 
 class FlyArmorClientSystem(ClientSystem):
@@ -247,12 +252,12 @@ class FlyArmorClientSystem(ClientSystem):
             self._card_closetoggle = CloseCardToggle
             self._card_gettogstate = GetCardToggleState
             self._card_settogstate = SetCardToggleState
-            # 读取客户端调试日志输出的持久化状态
-            self._client_log_enabled = bool(GetSettingValue(
-                MAIN_CARD_ID, "client", "fly_debug_client",
-                "client_log_output", default=False))
+            # 读取客户端调试日志输出的持久化状态（优先前置面板，其次本机本地存储）
+            self._client_log_enabled = bool(self._read_client_setting("client_log_output"))
         except ImportError:
             print "==== [飞行之羽] 前置模组(CardRegistry)未安装，跳过设置界面注册 ===="
+            # 无前置：客户端设置改走原版本地存储，客户端指令依然可用
+            self._client_log_enabled = bool(self._read_client_setting("client_log_output"))
             return
 
         self._register_settings_cards()
@@ -943,15 +948,18 @@ class FlyArmorClientSystem(ClientSystem):
     # ==================== 客户端设置指令（服务端下发） ====================
 
     def _write_client_setting(self, full_key, value):
-        """把指令下发的值写入本机本地存储并刷新 UI（仅作用于本玩家）。"""
+        """把指令下发的值写入本机（前置面板可用时同步刷新 UI），不依赖前置。"""
         item = self._client_setting_item(full_key)
         if item is None:
             return False
-        self._set_ui_value(item, value)
+        ok = self._local_client_set(item, value)
+        if self._card_ready:
+            # 前置面板存在时同步面板显示，避免指令值与面板值不一致
+            self._set_ui_value(item, value)
         if item == "client_log_output":
             self._client_log_enabled = bool(value)
         self._client_debug_print("指令写入客户端设置 %s = %s" % (item, value))
-        return True
+        return ok or self._card_ready
 
     def _client_setting_item(self, full_key):
         """fly_armor.client.<mid>.<item> -> item；不合法/非本模组设置项返回 None。"""
@@ -961,32 +969,67 @@ class FlyArmorClientSystem(ClientSystem):
         item = parts[3]
         return item if item in CLIENT_SETTING_SCHEMA else None
 
-    def _read_client_setting(self, item):
-        """读取本机某客户端设置项的当前值（无前置时回退默认值）。"""
-        mid, _type, default = CLIENT_SETTING_SCHEMA[item]
-        if not self._card_ready or not self._card_getsetting:
-            return default
+    # ===== 本机本地存储（原版 API，前置不在时用） =====
+
+    def _client_cfg_comp(self):
+        """取本机本地存储组件（原版 ConfigCompClient）；不可用返回 None。"""
         try:
-            v = self._card_getsetting(MAIN_CARD_ID, CLIENT_SUB_KEY, mid, item, default)
-            return default if v is None else v
+            return clientApi.GetEngineCompFactory().CreateConfigClient(
+                clientApi.GetLevelId())
         except Exception:
-            return default
+            return None
+
+    def _local_client_all(self):
+        """读取本地存储里的全部客户端设置（失败返回空 dict）。"""
+        comp = self._client_cfg_comp()
+        if comp is None:
+            return {}
+        try:
+            data = comp.GetConfigData(CLIENT_SETTING_CONFIG_NAME,
+                                      CLIENT_SETTING_IS_GLOBAL)
+            return dict(data) if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def _local_client_set(self, item, value):
+        """把单个客户端设置项写进本地存储（原版 API）；成功返回 True。"""
+        comp = self._client_cfg_comp()
+        if comp is None:
+            return False
+        try:
+            data = self._local_client_all()
+            data[item] = value
+            return bool(comp.SetConfigData(CLIENT_SETTING_CONFIG_NAME, data,
+                                           CLIENT_SETTING_IS_GLOBAL))
+        except Exception:
+            return False
+
+    def _read_client_setting(self, item):
+        """读取本机某客户端设置项：优先前置面板存储，其次原版本地存储，最后默认值。"""
+        mid, _type, default = CLIENT_SETTING_SCHEMA[item]
+        if self._card_ready and self._card_getsetting:
+            try:
+                v = self._card_getsetting(MAIN_CARD_ID, CLIENT_SUB_KEY, mid, item, None)
+                if v is not None:
+                    return v
+            except Exception:
+                pass
+        v = self._local_client_all().get(item)
+        return default if v is None else v
 
     def _reply_client_setting(self, payload):
         payload["playerId"] = clientApi.GetLocalPlayerId()
         self.NotifyToServer(CLIENT_SETTING_REPLY_EVENT, payload)
 
     def on_client_setting_command(self, args):
-        """服务端下发的客户端设置指令：读写本机本地存储，结果回执给服务端统一回显。"""
+        """服务端下发的客户端设置指令：读写本机本地存储（原版 API，不依赖前置）。"""
         action = args.get("action")
-        if not self._card_ready:
-            # 前置未安装：无法读写本地设置，回执失败让服务端提示
-            self._reply_client_setting({"action": action, "key": args.get("key", ""),
-                                        "error": True})
-            return
         if action == "set":
             full_key = args.get("key", "")
-            self._write_client_setting(full_key, args.get("value"))
+            if not self._write_client_setting(full_key, args.get("value")):
+                self._reply_client_setting({"action": "set", "key": full_key,
+                                            "error": True})
+                return
             self._reply_client_setting({"action": "set", "key": full_key,
                                         "value": args.get("value")})
             return

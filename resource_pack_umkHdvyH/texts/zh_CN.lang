@@ -9,6 +9,7 @@ commands.fly_armor.list.ok=§e[飞行之羽] 设置键列表
 commands.fly_armor.list.need_mod=§c[飞行之羽] 请指定模组id，例如 fly_armor
 commands.fly_armor.unknown_key=§c[飞行之羽] 未知设置键，可用 /fly_feather_list 或 /fly_feather_client_list 查看
 commands.fly_armor.bad_value=§c[飞行之羽] 值格式不合法
+commands.fly_armor.bad_item=§c[飞行之羽] 物品id无效
 commands.fly_armor.no_permission=§c[飞行之羽] 权限不足：服务端设置指令仅管理员（操作员）可用
 commands.fly_armor.cb_disabled=§c[飞行之羽] 命令方块修改已被配置禁用
 commands.fly_armor.client_need_player=§c[飞行之羽] 客户端设置只能由玩家本人执行，且仅作用于自己

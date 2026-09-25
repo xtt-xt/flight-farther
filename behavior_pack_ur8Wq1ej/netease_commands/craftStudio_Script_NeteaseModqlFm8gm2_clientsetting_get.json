@@ -1,9 +1,0 @@
-{
-	"format_version": "0.0.1",
-	"name": "clientsetting_get",
-	"description": "查询本人客户端设置项：/clientsetting_get <键>。键形如 fly_armor.client.<中间卡片>.<设置项>",
-	"permission_level": "any",
-	"args": [
-		{"name": "键", "type": "str", "default": ""}
-	]
-}

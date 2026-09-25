@@ -1,9 +1,0 @@
-{
-	"format_version": "0.0.1",
-	"name": "clientsetting_reset",
-	"description": "重置本人客户端设置项：/clientsetting_reset <键或分组前缀>。键形如 fly_armor.client...",
-	"permission_level": "any",
-	"args": [
-		{"name": "键", "type": "str", "default": ""}
-	]
-}

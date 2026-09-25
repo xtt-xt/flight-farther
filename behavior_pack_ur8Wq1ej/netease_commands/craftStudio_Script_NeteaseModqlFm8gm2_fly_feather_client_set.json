@@ -1,0 +1,10 @@
+{
+	"format_version": "0.0.1",
+	"name": "fly_feather_client_set",
+	"description": "修改本人客户端设置项（无需管理员，仅作用于自己）：/fly_feather_client_set <键> <值>。键形如 fly_armor.client.<中间卡片>.<设置项>",
+	"permission_level": "any",
+	"args": [
+		{"name": "键", "type": "str", "default": ""},
+		{"name": "值", "type": "str", "default": ""}
+	]
+}

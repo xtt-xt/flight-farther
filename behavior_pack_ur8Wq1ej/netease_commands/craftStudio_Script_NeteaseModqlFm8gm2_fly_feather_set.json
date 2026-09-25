@@ -1,7 +1,7 @@
 {
 	"format_version": "0.0.1",
-	"name": "setting_set",
-	"description": "修改服务端设置项（需管理员）：/setting_set <键> <值> [目标]。键形如 fly_armor.server.<中间卡片>.<设置项>；客户端设置请用 clientsetting_set",
+	"name": "fly_feather_set",
+	"description": "修改服务端设置项（需管理员）：/fly_feather_set <键> <值> [目标]。键形如 fly_armor.server.<中间卡片>.<设置项>；客户端设置请用 fly_feather_client_set",
 	"permission_level": "game_directors",
 	"args": [
 		{"name": "键", "type": "str", "default": ""},

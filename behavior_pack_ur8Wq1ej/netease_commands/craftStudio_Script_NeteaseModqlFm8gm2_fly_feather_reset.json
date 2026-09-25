@@ -1,0 +1,10 @@
+{
+	"format_version": "0.0.1",
+	"name": "fly_feather_reset",
+	"description": "重置服务端设置项（需管理员）：/fly_feather_reset <键或分组前缀> [目标]。键形如 fly_armor.server...；客户端设置请用 fly_feather_client_reset",
+	"permission_level": "game_directors",
+	"args": [
+		{"name": "键", "type": "str", "default": ""},
+		{"name": "目标", "type": "target", "default": "@s"}
+	]
+}

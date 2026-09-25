@@ -1,0 +1,9 @@
+{
+	"format_version": "0.0.1",
+	"name": "fly_feather_client_get",
+	"description": "查询本人客户端设置项：/fly_feather_client_get <键>。键形如 fly_armor.client.<中间卡片>.<设置项>",
+	"permission_level": "any",
+	"args": [
+		{"name": "键", "type": "str", "default": ""}
+	]
+}

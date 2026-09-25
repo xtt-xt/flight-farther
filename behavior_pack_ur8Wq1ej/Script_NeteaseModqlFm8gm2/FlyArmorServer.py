@@ -436,13 +436,15 @@ class FlyArmorServerSystem(ServerSystem):
             return
         if key not in self.mod_settings:
             return
-        # 逐装备修复物品id：校验物品存在，无效则提示并回退
+        # 逐装备修复物品id：校验物品存在，无效则回退并提示
+        # 本条来自前置设置界面弹窗（非指令），提示用前置自定义 toast（同复制日志），不用原版 tip
         if key.startswith("repair_material_"):
             m = self._validate_repair_material(playerId, value)
             if m is None:
                 old = self.mod_settings.get(key, "")
-                self.send_tip(playerId, "§c物品 %s 不存在，已还原为 %s" % (value or "", old or "空"))
-                self._revert_setting_to_client(playerId, key, old)
+                self._revert_setting_to_client(
+                    playerId, key, old,
+                    toast="物品 %s 不存在，已还原为 %s" % (value or "", old or "空"))
                 return
             self.mod_settings[key] = m
         # 逐装备修复经验：输入0不消耗，处理多种填写
@@ -492,13 +494,17 @@ class FlyArmorServerSystem(ServerSystem):
             f = 0.0
         return int(round(f))
 
-    def _revert_setting_to_client(self, playerId, key, value):
-        """通知客户端把指定设置项回退为给定值（写入前置本地存储并刷新 UI）。"""
+    def _revert_setting_to_client(self, playerId, key, value, toast=None):
+        """通知客户端把指定设置项回退为给定值（写入前置本地存储并刷新 UI）。
+
+        toast 非空时由客户端用前置自定义 toast 显示该文案；指令路径不经过本方法，
+        仍走原版提示（return_msg_key + tellraw），两条路径互不影响。
+        """
+        payload = {"key": key, "value": value}
+        if toast:
+            payload["toast"] = toast
         try:
-            self.NotifyToClient(playerId, "FlyArmorRevertSettingEvent", {
-                "key": key,
-                "value": value,
-            })
+            self.NotifyToClient(playerId, "FlyArmorRevertSettingEvent", payload)
         except Exception:
             pass
 
@@ -528,17 +534,25 @@ class FlyArmorServerSystem(ServerSystem):
 
     # ==================== 自定义指令（不依赖前置，支持命令方块） ====================
 
-    # 服务端设置指令（写操作需管理员）
-    SERVER_COMMAND_NAMES = ("setting_set", "setting_get", "setting_reset", "setting_list")
-    # 客户端设置指令（无需管理员权限，仅作用于执行者本人的本机设置）
-    CLIENT_COMMAND_NAMES = ("clientsetting_set", "clientsetting_get",
-                            "clientsetting_reset", "clientsetting_list")
+    # 模组专属指令：指令名 -> (子卡片key, 动作)。
+    # 服务端指令（写操作需管理员）前缀 fly_feather_；客户端指令（无需管理员，仅作用于本人）
+    # 后缀 _client_。带该前缀可避免与其他模组的通用 setting_* 指令抢名。
+    COMMAND_ACTIONS = {
+        "fly_feather_set": (SERVER_SUB_KEY, "set"),
+        "fly_feather_get": (SERVER_SUB_KEY, "get"),
+        "fly_feather_reset": (SERVER_SUB_KEY, "reset"),
+        "fly_feather_list": (SERVER_SUB_KEY, "list"),
+        "fly_feather_client_set": (CLIENT_SUB_KEY, "set"),
+        "fly_feather_client_get": (CLIENT_SUB_KEY, "get"),
+        "fly_feather_client_reset": (CLIENT_SUB_KEY, "reset"),
+        "fly_feather_client_list": (CLIENT_SUB_KEY, "list"),
+    }
     # 各子卡片的列表指令名（用于分页提示）
-    LIST_COMMAND_BY_SUB = {SERVER_SUB_KEY: "setting_list",
-                           CLIENT_SUB_KEY: "clientsetting_list"}
+    LIST_COMMAND_BY_SUB = {SERVER_SUB_KEY: "fly_feather_list",
+                           CLIENT_SUB_KEY: "fly_feather_client_list"}
     FULL_KEY_PREFIX = "fly_armor."
     MAIN_CARD_ID = "fly_armor"
-    LIST_PAGE_SIZE = 10  # setting_list 每页条数
+    LIST_PAGE_SIZE = 10  # fly_feather_list 每页条数
     # 服务端 -> 客户端：下发客户端设置指令；客户端 -> 服务端：回执本机设置值
     CLIENT_SETTING_CMD_EVENT = "Script_NeteaseModqlFm8gm2_ClientSettingCommand"
     CLIENT_SETTING_REPLY_EVENT = "Script_NeteaseModqlFm8gm2_ClientSettingReply"
@@ -763,7 +777,7 @@ class FlyArmorServerSystem(ServerSystem):
                                   else "commands.fly_armor.use_server_cmd")
 
     def _handle_setting_list(self, args, arg_map, playerId, sub):
-        """setting_list / clientsetting_list：分别列出服务端（本机权威）与客户端（本人回执）设置键。"""
+        """fly_feather_list / fly_feather_client_list：分别列出服务端（本机权威）与客户端（本人回执）设置键。"""
         mod_id = str(arg_map.get('模组') or "").strip()
         if not mod_id:
             args["return_failed"] = True
@@ -836,7 +850,7 @@ class FlyArmorServerSystem(ServerSystem):
                 return
             self._send_client_setting_cmd(playerId, {"action": "set", "key": full_key, "value": value})
             args["return_msg_key"] = "commands.fly_armor.set.ok"
-            self._audit("clientsetting_set %s = %s" % (full_key, value))
+            self._audit("fly_feather_client_set %s = %s" % (full_key, value))
             return
 
         if action == "reset":
@@ -856,7 +870,7 @@ class FlyArmorServerSystem(ServerSystem):
                 defaults[self.FULL_KEY_PREFIX + rk] = CLIENT_SETTING_VALUE_SCHEMA[rk][1]
             self._send_client_setting_cmd(playerId, {"action": "reset", "defaults": defaults})
             args["return_msg_key"] = "commands.fly_armor.reset.ok"
-            self._audit("clientsetting_reset %s (%d)" % (full_key, len(reset_keys)))
+            self._audit("fly_feather_client_reset %s (%d)" % (full_key, len(reset_keys)))
             return
 
     def on_client_setting_reply(self, args):
@@ -885,12 +899,10 @@ class FlyArmorServerSystem(ServerSystem):
 
     def on_custom_command(self, args):
         command = args.get('command')
-        if command in self.CLIENT_COMMAND_NAMES:
-            sub, action = CLIENT_SUB_KEY, command.split("_", 1)[1]
-        elif command in self.SERVER_COMMAND_NAMES:
-            sub, action = SERVER_SUB_KEY, command.split("_", 1)[1]
-        else:
+        entry = self.COMMAND_ACTIONS.get(command)
+        if entry is None:
             return  # 静默：非本模组指令，绝不设置任何返回字段
+        sub, action = entry
         arg_map = {}
         for a in args.get('args', []) or []:
             if isinstance(a, dict):
@@ -950,12 +962,12 @@ class FlyArmorServerSystem(ServerSystem):
                 args["return_msg_key"] = "commands.fly_armor.bad_value"
                 self._echo_or_log(target_ids, playerId, "[飞行之羽] 值格式不合法：%s 需要 %s"
                                   % (self._item_of_schema(rest), SETTING_VALUE_SCHEMA[rest][0]))
-                self._audit("setting_set 失败(%s) %s" % (res, full_key))
+                self._audit("fly_feather_set 失败(%s) %s" % (res, full_key))
                 return
             self._mirror_sync(target_ids, full_key, res)
             self._echo_or_log(target_ids, playerId, "[飞行之羽] %s = %s" % (full_key, res))
             args["return_msg_key"] = "commands.fly_armor.set.ok"
-            self._audit("setting_set %s = %s" % (full_key, res))
+            self._audit("fly_feather_set %s = %s" % (full_key, res))
             return
 
         if action == "get":
@@ -988,7 +1000,7 @@ class FlyArmorServerSystem(ServerSystem):
                     self._mirror_sync(target_ids, self.FULL_KEY_PREFIX + rk, v)
             self._echo_or_log(target_ids, playerId, "[飞行之羽] 已重置 %d 项" % n)
             args["return_msg_key"] = "commands.fly_armor.reset.ok"
-            self._audit("setting_reset %s (%d)" % (full_key, n))
+            self._audit("fly_feather_reset %s (%d)" % (full_key, n))
             return
 
     # ==================== 通用工具方法 ====================

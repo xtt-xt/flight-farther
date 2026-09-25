@@ -902,12 +902,27 @@ class FlyArmorClientSystem(ClientSystem):
         self._send_setting_to_server(item_id, state)
 
     def on_revert_setting(self, args):
-        """服务端回退事件：非法材料id/经验还原为服务端给定值。"""
+        """服务端回退事件：非法材料id/经验还原为服务端给定值。
+
+        带 toast 文案时用前置的自定义提示（与复制日志同款底部 toast）；
+        指令路径不触发本事件，仍走原版提示。
+        """
         key = args.get("key")
         value = args.get("value")
         if key and value is not None:
             self._set_ui_value(key, value)
             self._client_debug_print("服务端回退 %s = %s" % (key, value))
+        toast = args.get("toast")
+        if toast:
+            self._show_dependency_toast(toast)
+
+    def _show_dependency_toast(self, text):
+        """用前置自定义提示（底部 toast，同复制日志）显示文案；未安装前置时自动忽略。"""
+        try:
+            from Script_NeteaseMod9sPMlz0K.CardRegistryApi import ShowToast, ToastUnder
+            ShowToast(ToastUnder, text)
+        except Exception:
+            pass
 
     def on_mirror_sync(self, args):
         """自定义指令镜像刷新：把完整键 fly_armor.server.<mid>.<item> 还原为 item 并写入本地镜像。

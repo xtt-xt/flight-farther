@@ -1,7 +1,7 @@
 {
 	"format_version": "0.0.1",
-	"name": "setting_get",
-	"description": "查询服务端设置项（需管理员）：/setting_get <键> [目标]。键形如 fly_armor.server.<中间卡片>.<设置项>",
+	"name": "fly_feather_get",
+	"description": "查询服务端设置项（需管理员）：/fly_feather_get <键> [目标]。键形如 fly_armor.server.<中间卡片>.<设置项>",
 	"permission_level": "game_directors",
 	"args": [
 		{"name": "键", "type": "str", "default": ""},

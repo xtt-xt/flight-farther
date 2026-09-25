@@ -1,10 +1,9 @@
 {
 	"format_version": "0.0.1",
 	"name": "fly_feather_client_list",
-	"description": "列出本人客户端设置键及当前值：/fly_feather_client_list <模组id> [页码]",
+	"description": "列出本人客户端设置键及当前值：/fly_feather_client_list [页码]",
 	"permission_level": "any",
 	"args": [
-		{"name": "模组", "type": "str"},
 		{"name": "页码", "type": "int", "default": 1}
 	]
 }

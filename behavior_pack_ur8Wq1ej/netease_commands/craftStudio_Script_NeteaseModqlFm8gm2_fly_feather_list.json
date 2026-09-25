@@ -1,10 +1,9 @@
 {
 	"format_version": "0.0.1",
 	"name": "fly_feather_list",
-	"description": "列出服务端设置键及当前值（需管理员）：/fly_feather_list <模组id> [页码] [目标]。客户端设置请用 fly_feather_client_list",
+	"description": "列出服务端设置键及当前值（需管理员）：/fly_feather_list [页码] [目标]。客户端设置请用 fly_feather_client_list",
 	"permission_level": "game_directors",
 	"args": [
-		{"name": "模组", "type": "str"},
 		{"name": "页码", "type": "int", "default": 1},
 		{"name": "目标", "type": "target", "default": "@s"}
 	]

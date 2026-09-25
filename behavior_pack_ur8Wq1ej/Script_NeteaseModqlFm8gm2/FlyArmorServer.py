@@ -728,8 +728,12 @@ class FlyArmorServerSystem(ServerSystem):
         return None
 
     def _parse_page(self, arg_map):
+        """取页码。空/非法（例如把旧的模组id当第一个参数传进来）一律按第 1 页处理。"""
+        raw = arg_map.get('页码')
+        if raw is None or str(raw).strip() == "":
+            return 1
         try:
-            return int(arg_map.get('页码') or 1)
+            return max(1, int(str(raw).strip()))
         except Exception:
             return 1
 
@@ -751,12 +755,11 @@ class FlyArmorServerSystem(ServerSystem):
             page, clamped = max_page, True
         page_items = items[(page - 1) * self.LIST_PAGE_SIZE: page * self.LIST_PAGE_SIZE]
         label = "服务端" if sub == SERVER_SUB_KEY else "客户端"
-        lines = ["[飞行之羽] 模组 %s（%s）— 共 %d 项" % (self.MAIN_CARD_ID, label, total)]
+        lines = ["[飞行之羽] %s设置 — 共 %d 项" % (label, total)]
         lines.extend(page_items)
         footer = "── 第 %d/%d 页 ──" % (page, max_page)
         if max_page > 1:
-            footer += " 下一页：/%s %s %d" % (self.LIST_COMMAND_BY_SUB[sub],
-                                              self.MAIN_CARD_ID, page + 1)
+            footer += " 下一页：/%s %d" % (self.LIST_COMMAND_BY_SUB[sub], page + 1)
         if clamped:
             footer += " §7（页码超出范围，已显示第 %d/%d 页）" % (page, max_page)
         lines.append(footer)
@@ -777,22 +780,10 @@ class FlyArmorServerSystem(ServerSystem):
                                   else "commands.fly_armor.use_server_cmd")
 
     def _handle_setting_list(self, args, arg_map, playerId, sub):
-        """fly_feather_list / fly_feather_client_list：分别列出服务端（本机权威）与客户端（本人回执）设置键。"""
-        mod_id = str(arg_map.get('模组') or "").strip()
-        if not mod_id:
-            args["return_failed"] = True
-            args["return_msg_key"] = "commands.fly_armor.list.need_mod"
-            if playerId:
-                self._send_tellraw(playerId, "[飞行之羽] 请指定模组id，例如 fly_armor")
-            return
-        if mod_id.startswith(self.MAIN_CARD_ID + "."):
-            # 兼容带子卡片后缀的写法：后缀必须与所用指令一致
-            if mod_id[len(self.MAIN_CARD_ID) + 1:] != sub:
-                self._fail_wrong_sub(args, sub)
-                return
-        elif mod_id != self.MAIN_CARD_ID:
-            return  # 静默：模组不归属本模组，保持多模组共存约定
+        """fly_feather_list / fly_feather_client_list：分别列出服务端（本机权威）与客户端（本人回执）设置键。
 
+        指令已是模组专属，不再需要传模组id；页码为第一个参数。
+        """
         page = self._parse_page(arg_map)
         args["return_msg_key"] = "commands.fly_armor.list.ok"
         if sub == CLIENT_SUB_KEY:

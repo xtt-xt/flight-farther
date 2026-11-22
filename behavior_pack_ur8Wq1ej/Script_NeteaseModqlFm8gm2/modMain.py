@@ -11,10 +11,8 @@ class Script_NeteaseModqlFm8gm2(object):
 
     @Mod.InitServer()
     def ServerInit(self):
-        import sys, os
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        if script_dir not in sys.path:
-            sys.path.insert(0, script_dir)
+        # 只注册服务端 System：模块路径用「包名.模块.类名」，引擎按行为包根目录解析，
+        # 不要在这里 import os/sys 改 sys.path（平台安全规则 restricted-module-import 会告警）
         import mod.server.extraServerApi as serverApi
         serverApi.RegisterSystem("FlyArmorServer", "FlyArmorServerSystem",
                                  "Script_NeteaseModqlFm8gm2.FlyArmorServer.FlyArmorServerSystem")
@@ -25,10 +23,7 @@ class Script_NeteaseModqlFm8gm2(object):
 
     @Mod.InitClient()
     def ClientInit(self):
-        import sys, os
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        if script_dir not in sys.path:
-            sys.path.insert(0, script_dir)
+        # 同上：客户端 System 也用完整包路径注册，不依赖 sys.path 注入
         import mod.client.extraClientApi as clientApi
         clientApi.RegisterSystem("FlyArmorClient", "FlyArmorClientSystem",
                                  "Script_NeteaseModqlFm8gm2.FlyArmorClient.FlyArmorClientSystem")

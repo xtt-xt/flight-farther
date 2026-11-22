@@ -261,6 +261,9 @@ class FlyArmorServerSystem(ServerSystem):
         # 客户端设置指令：客户端回执本机设置值（get/list）
         self.ListenForEvent("FlyArmorClient", "FlyArmorClientSystem",
                             self.CLIENT_SETTING_REPLY_EVENT, self, self.on_client_setting_reply)
+        # 物品选择弹窗：客户端请求全部已加载物品列表
+        self.ListenForEvent("FlyArmorClient", "FlyArmorClientSystem",
+                            self.ALL_ITEMS_REQ_EVENT, self, self.on_request_all_items)
 
         # ---- 模组全局设置（仅房主/管理员可改） ----
         self._default_settings = {
@@ -556,6 +559,9 @@ class FlyArmorServerSystem(ServerSystem):
     # 服务端 -> 客户端：下发客户端设置指令；客户端 -> 服务端：回执本机设置值
     CLIENT_SETTING_CMD_EVENT = "Script_NeteaseModqlFm8gm2_ClientSettingCommand"
     CLIENT_SETTING_REPLY_EVENT = "Script_NeteaseModqlFm8gm2_ClientSettingReply"
+    # 客户端 -> 服务端：请求全部已加载物品；服务端 -> 客户端：回执 identifier 列表
+    ALL_ITEMS_REQ_EVENT = "Script_NeteaseModqlFm8gm2_ReqAllItems"
+    ALL_ITEMS_REPLY_EVENT = "Script_NeteaseModqlFm8gm2_AllItems"
 
     def _split_full_key(self, full_key):
         """fly_armor.server.<mid>.<item> -> (sub, mid, item)；不合法返回 (None, None, None)。"""
@@ -650,7 +656,7 @@ class FlyArmorServerSystem(ServerSystem):
         """用 /tellraw 把明细发给玩家（不依赖前置）。失败记日志，不静默。"""
         try:
             import json as _json
-            # ensure_ascii=True：Py2.7 下输出 \uXXXX 保证 SetCommand 行为稳定
+            # ensure_ascii=True：Py2.7 下输出 unicode 转义序列，保证 SetCommand 行为稳定
             payload = _json.dumps({"rawtext": [{"text": text}]}, ensure_ascii=True)
         except Exception:
             payload = '{"rawtext":[{"text":"%s"}]}' % text.replace("\\", "\\\\").replace("\"", "\\\"")
@@ -887,6 +893,31 @@ class FlyArmorServerSystem(ServerSystem):
             items = sorted("%s = %s" % (k, v) for k, v in values.items())
             self._echo_setting_list(playerId, items, page, CLIENT_SUB_KEY)
             return
+
+    def on_request_all_items(self, args):
+        """回执全部已加载物品 identifier（原版 + 各模组），供客户端物品选择弹窗。
+
+        GetLoadItems 只有服务端有，客户端要在设置面板里选修复物品必须经此中转；
+        只回发给请求者本人，不做鉴权（物品表本身是公开信息）。
+        """
+        playerId = args.get('playerId')
+        if not playerId:
+            return
+        items = []
+        try:
+            comp = serverCompFactory.CreateItem(serverApi.GetLevelId())
+            if comp is not None:
+                items = list(comp.GetLoadItems(True) or [])
+        except Exception:
+            items = []
+        payload = self.CreateEventData()
+        payload["playerId"] = playerId
+        payload["items"] = items
+        try:
+            self.NotifyToClient(playerId, self.ALL_ITEMS_REPLY_EVENT, payload)
+        except Exception:
+            pass
+        self._debug_print("回执全部物品列表：{} 项".format(len(items)))
 
     def on_custom_command(self, args):
         command = args.get('command')
@@ -1452,7 +1483,7 @@ class FlyArmorServerSystem(ServerSystem):
                 carried = itemComp.GetPlayerItem(hand_slot, 0)
                 if carried and carried.get('itemName') == material_name:
                     return True
-            except:
+            except Exception:
                 pass
         return False
 

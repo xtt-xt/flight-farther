@@ -84,6 +84,26 @@ XP_OPTION = "xpref_"
 MATERIAL_TOGGLE_ID = "fly_repair_material"  # 修复所需物品id
 MATERIAL_OPTION = "matref_"
 
+# ===== 修复所需物品：物品选择行（前置 CardToggle 的 toggle_item_picker） =====
+# 弹窗内每羽一行「物品图标 + 描述 + 物品预览格 + 箭头」，点箭头叠一层物品选择弹窗
+# 从全部已加载物品里选，选完由前置回填预览格并持久化，不再手填物品id。
+MATERIAL_PICKER_ID = "fly_repair_material_picker"  # 物品选择数据集 id（四个羽共用）
+MATERIAL_PICKER_TITLE = "选择修复物品"
+MATERIAL_PICKER_FALLBACK = (  # 服务端物品列表未到达时的兜底项（常见修复材料）
+    ("minecraft:feather", 0, "羽毛"),
+    ("minecraft:dragon_breath", 0, "龙息"),
+    ("minecraft:phantom_membrane", 0, "幻翼膜"),
+    ("minecraft:rabbit_foot", 0, "兔子脚"),
+    ("minecraft:iron_ingot", 0, "铁锭"),
+    ("minecraft:gold_ingot", 0, "金锭"),
+    ("minecraft:diamond", 0, "钻石"),
+    ("minecraft:emerald", 0, "绿宝石"),
+    ("minecraft:netherite_ingot", 0, "下界合金锭"),
+)
+# 全部物品列表：客户端 -> 服务端请求，服务端 GetLoadItems 回执
+ALL_ITEMS_REQ_EVENT = "Script_NeteaseModqlFm8gm2_ReqAllItems"
+ALL_ITEMS_REPLY_EVENT = "Script_NeteaseModqlFm8gm2_AllItems"
+
 # ===== 功能设置：状态效果 / 启用功能 两个组合开关弹窗（CardToggle） =====
 EFFECT_TOGGLE_ID = "fly_effects"        # 状态效果数据集 id
 EFFECT_OPTION = "eff_"                  # 选项 id 前缀 + 设置项后缀
@@ -173,6 +193,27 @@ CLIENT_SETTING_CONFIG_NAME = "Script_NeteaseModqlFm8gm2_client_state"
 CLIENT_SETTING_IS_GLOBAL = False  # False = 存档配置（重进世界保留，跨存档不共享）
 
 
+def _decode_material_value(value):
+    """组合开关物品选择行的状态 -> 物品 identifier。
+
+    前置把选中值存成 "物品名|附加值"（附加值为 0 时只存物品名），
+    而本模组的设置项只存 identifier，所以取 "|" 前的部分。
+    """
+    if not value:
+        return ""
+    text = value
+    if not isinstance(text, basestring):
+        text = "%s" % (text,)
+    pos = text.rfind("|")
+    if pos < 0:
+        return text
+    try:
+        int(text[pos + 1:])
+    except (TypeError, ValueError):
+        return text
+    return text[:pos]
+
+
 class FlyArmorClientSystem(ClientSystem):
     def __init__(self, namespace, systemName):
         ClientSystem.__init__(self, namespace, systemName)
@@ -193,6 +234,7 @@ class FlyArmorClientSystem(ClientSystem):
         self._card_gettogstate = None
         self._card_settogstate = None
         self._card_getsetting = None
+        self._card_regpicker = None
         self._card_ready = False
         self.has_permission = False
         self._can_edit_permission = False  # 服务端下发的「权限管理」页可操作权
@@ -201,6 +243,11 @@ class FlyArmorClientSystem(ClientSystem):
         self._last_synced_settings = None  # 最近一次已同步到 UI 的服务端设置
         self._poll_timer = None
         self._pending_permission_args = None  # 缓存提前到达的权限事件
+        # 物品列表（服务端下发）与修复物品选择状态
+        self._item_display = {}          # 物品 identifier -> 本地化显示名
+        self._all_items_ready = False    # 是否已收到全部物品列表
+        self._all_items_requested = 0    # 已请求次数（上限 3 次，失败就退回兜底项）
+        self._material_picker_ok = False  # 前置是否支持「物品选择行」（toggle_item_picker）
 
         self.ListenForEvent(clientEngineNamespace, clientEngineSystemName,
                             "UiInitFinished", self, self.on_ui_init)
@@ -217,6 +264,9 @@ class FlyArmorClientSystem(ClientSystem):
         # 客户端设置指令：服务端下发的读写本机客户端设置请求
         self.ListenForEvent("FlyArmorServer", "FlyArmorServerSystem",
                             CLIENT_SETTING_CMD_EVENT, self, self.on_client_setting_command)
+        # 服务端回执全部物品列表（物品选择弹窗的数据源）
+        self.ListenForEvent("FlyArmorServer", "FlyArmorServerSystem",
+                            ALL_ITEMS_REPLY_EVENT, self, self.on_all_items)
 
     # ==================== 前置(CardRegistry)设置卡片注册 ====================
 
@@ -252,6 +302,14 @@ class FlyArmorClientSystem(ClientSystem):
             self._card_closetoggle = CloseCardToggle
             self._card_gettogstate = GetCardToggleState
             self._card_settogstate = SetCardToggleState
+            # 物品选择行所需 API：较新版本的前置才有，缺失时退回手填物品id的编辑框
+            try:
+                from Script_NeteaseMod9sPMlz0K.CardRegistryApi import RegisterItemPicker
+                self._card_regpicker = RegisterItemPicker
+                self._material_picker_ok = True
+            except ImportError:
+                self._card_regpicker = None
+                self._material_picker_ok = False
             # 读取客户端调试日志输出的持久化状态（优先前置面板，其次本机本地存储）
             self._client_log_enabled = bool(self._read_client_setting("client_log_output"))
         except ImportError:
@@ -268,6 +326,9 @@ class FlyArmorClientSystem(ClientSystem):
         self._register_repairable_toggle()
         self._register_repair_consume_toggle()
         self._register_repair_xp_toggle()
+        # 物品选择数据集必须先注册：物品选择行（toggle_item_picker）按 picker_id 取数据。
+        # 先注册兜底项，服务端物品列表到达后整体覆盖。
+        self._register_material_picker()
         self._register_repair_material_toggle()
         self._register_permission_toggle()
         self._card_ready = True
@@ -282,6 +343,8 @@ class FlyArmorClientSystem(ClientSystem):
         if self._pending_permission_args is not None:
             self._apply_permission_args(self._pending_permission_args)
             self._pending_permission_args = None
+        # 请求服务端下发全部已加载物品，填充物品选择弹窗
+        self._request_all_items()
 
     def _register_settings_cards(self):
         """注册主卡片 + 中间卡片（服务端主题 + 客户端调试）+ 内容项（替换原生设置）"""
@@ -326,7 +389,7 @@ class FlyArmorClientSystem(ClientSystem):
 
         # ===== 服务端：修复设置（逐装备，均用 CardToggle 弹窗） =====
         inst = self._card_create(MAIN_CARD_ID, "server", "fly_repair")
-        inst.AddText("repair_note", "", "各羽修复设置分别弹窗管理；不可修复/不消耗物品的羽，其对应弹窗内选项会自动锁定；修复物品id填写无效将提示并还原")
+        inst.AddText("repair_note", "", "各羽修复设置分别弹窗管理；不可修复/不消耗物品的羽，其对应弹窗内选项会自动锁定；修复物品点行内箭头从物品列表选择")
         inst.AddButton("open_repairable", "逐羽设置该装备是否可被修复",
                        "打开", litle="可修复的装备",
                        on_click=self.on_open_repairable_toggle)
@@ -336,7 +399,7 @@ class FlyArmorClientSystem(ClientSystem):
         inst.AddButton("open_xp", "逐羽设置修复所需经验，0=不消耗",
                        "打开", litle="修复所需经验",
                        on_click=self.on_open_repair_xp_toggle)
-        inst.AddButton("open_material", "逐羽设置修复所需物品id（无效将提示并还原）",
+        inst.AddButton("open_material", "逐羽设置修复所需物品，点弹窗内行内箭头从物品列表选择",
                        "打开", litle="修复所需物品id",
                        on_click=self.on_open_repair_material_toggle)
         inst.AddResetButton("reset_fly_repair", on_click=self.on_reset_page)
@@ -733,44 +796,202 @@ class FlyArmorClientSystem(ClientSystem):
         if self._card_closetoggle:
             self._card_closetoggle()
 
-    # ==================== 修复所需物品id 组合开关弹窗（CardToggle） ====================
+    # ==================== 物品列表：服务端 GetLoadItems 下发 ====================
+
+    def _register_material_picker(self):
+        """注册修复物品选择数据集：先用兜底项占位，服务端物品列表到达后整体覆盖。"""
+        if not self._card_regpicker:
+            return
+        try:
+            self._card_regpicker(MATERIAL_PICKER_ID, MATERIAL_PICKER_TITLE,
+                                 items=list(MATERIAL_PICKER_FALLBACK))
+        except Exception:
+            # 数据集注册不成功时不要挂物品选择行（点箭头只会报 not registered）
+            self._material_picker_ok = False
+
+    def _request_all_items(self):
+        """请求服务端下发全部已加载物品（原版 + 各模组），最多 3 次。"""
+        if not self._card_regpicker:
+            return
+        if self._all_items_ready or self._all_items_requested >= 3:
+            return
+        self._all_items_requested += 1
+        try:
+            self.NotifyToServer(ALL_ITEMS_REQ_EVENT, {
+                "playerId": clientApi.GetLocalPlayerId()
+            })
+        except Exception:
+            pass
+
+    def on_all_items(self, args):
+        """服务端回执全部物品：整体覆盖物品选择数据集（下次点箭头即见全量列表）。"""
+        entries = self._build_item_picker_entries((args or {}).get("items") or [])
+        if entries and self._card_regpicker:
+            try:
+                self._card_regpicker(MATERIAL_PICKER_ID, MATERIAL_PICKER_TITLE,
+                                     items=entries)
+                self._all_items_ready = True
+            except Exception:
+                pass
+        self._client_debug_print("收到物品列表 %d 项，就绪=%s"
+                                 % (len(entries), self._all_items_ready))
+
+    def _build_item_picker_entries(self, ids):
+        """identifier 列表 -> [(identifier, 0, 显示名)]（显示名取客户端本地化物品名）。"""
+        entries = []
+        seen = {}
+        comp = self._item_info_comp()
+        for name in ids:
+            if not name:
+                continue
+            key = str(name)
+            if key in seen:
+                continue
+            seen[key] = True
+            entries.append((key, 0, self._item_display_name(key, comp)))
+        return entries
+
+    def _item_info_comp(self):
+        """客户端物品组件（取本地化物品名用）。"""
+        try:
+            return clientApi.GetEngineCompFactory().CreateItem(clientApi.GetLevelId())
+        except Exception:
+            return None
+
+    def _item_display_name(self, item_name, comp=None):
+        """物品 identifier -> 本地化显示名；取不到回退 identifier（结果缓存）。"""
+        if not item_name:
+            return ""
+        cached = self._item_display.get(item_name)
+        if cached:
+            return cached
+        if comp is None:
+            comp = self._item_info_comp()
+        display = item_name
+        if comp is not None:
+            try:
+                info = comp.GetItemBasicInfo(item_name) or {}
+                display = info.get("itemName") or item_name
+            except Exception:
+                display = item_name
+        self._item_display[item_name] = display
+        return display
+
+    # ============ 修复所需物品 组合开关弹窗（CardToggle 物品选择行 toggle_item_picker） ============
+
+    def _material_row_locked(self, ak):
+        """该羽「修复物品」行是否锁定：不可修复 或 不消耗物品 时锁定。"""
+        repairable = self._read_setting_bool("repairable_" + ak, True)
+        consume = self._read_setting_bool("repair_consume_material_" + ak, True)
+        return (not repairable) or (not consume)
+
+    def _material_current(self, ak):
+        """该羽当前生效的修复物品 identifier（面板镜像的服务端值）。"""
+        return self._read_setting_str("repair_material_" + ak, REPAIR_DEFAULTS[ak][1])
+
+    def _use_item_picker(self):
+        """是否用「物品选择行」：缺前置 ItemPicker API / 旧版前置时退回手填物品id。"""
+        return bool(self._card_regpicker and self._material_picker_ok)
+
+    def _add_material_picker_row(self, ak):
+        """注册一行物品选择行（toggle_item_picker）；前置不支持时返回 False。
+
+        行文本只写羽翼名——当前物品由右侧预览格的图标表示，不再重复写物品名
+        （与「可修复 / 是否消耗 / 修复经验」三个弹窗的行文本保持一致）。
+        选中值由前置写进组合开关状态（`cardtoggle.<toggle_id>`，格式 "物品名|附加值"），
+        本模组不再自己记账；`default_value` 只在该行还没有持久化状态时作为预览初始物品。
+        """
+        if not self._material_picker_ok:
+            return False
+        try:
+            self._card_addtogopt(
+                MATERIAL_TOGGLE_ID, MATERIAL_OPTION + ak,
+                ARMOR_KEY_TO_ITEM[ak],
+                desc=ARMOR_DISPLAY[ak],
+                ctrl_type="toggle_item_picker",
+                default_value=self._material_current(ak),
+                picker_id=MATERIAL_PICKER_ID,
+                on_click=self.on_material_row_picked,
+                locked=self._material_row_locked(ak))
+            return True
+        except TypeError:
+            # 旧版前置的 AddCardToggleOption 没有 picker_id 形参
+            self._material_picker_ok = False
+            self._client_debug_print("前置不支持物品选择行，修复物品退回手填物品id")
+            return False
 
     def _register_repair_material_toggle(self):
-        """注册"修复所需物品id"组合开关数据集（逐装备编辑框 + 底部应用按钮）。"""
+        """注册"修复所需物品"数据集（逐装备物品选择行 + 底部应用按钮）。
+
+        前置带物品选择行时，每行是「物品图标 + 描述 + 物品预览格 + 箭头」，点箭头把
+        物品选择弹窗叠在弹窗之上，选完由前置回填预览格；旧版前置没有该能力时退回
+        编辑框手填物品id。不可修复/不消耗物品的羽，其行控件按联动锁定。
+        """
         if not self._card_regtoggle:
             return
-        self._card_regtoggle(MATERIAL_TOGGLE_ID, "修复所需物品id", mode="multi")
+        self._card_regtoggle(MATERIAL_TOGGLE_ID, "修复所需物品", mode="multi")
+        use_picker = self._use_item_picker()
         for ak in ARMOR_KEYS:
+            if use_picker and self._add_material_picker_row(ak):
+                continue
             self._card_addtogopt(MATERIAL_TOGGLE_ID, MATERIAL_OPTION + ak,
                                  ARMOR_KEY_TO_ITEM[ak], desc=ARMOR_DISPLAY[ak],
-                                 default_value=REPAIR_DEFAULTS[ak][1],
-                                 ctrl_type="toggle_edit_box")
+                                 ctrl_type="toggle_edit_box",
+                                 default_value=self._material_current(ak),
+                                 locked=self._material_row_locked(ak))
         self._card_addtogbtn(MATERIAL_TOGGLE_ID, "应用到服务端",
                              self.on_apply_repair_material_toggle)
 
-    def on_open_repair_material_toggle(self, screenNode, item_id):
-        """打开"修复所需物品id"弹窗前：重注册联动锁定 + 同步当前输入。"""
-        if not self._card_settogstate or not self._card_opentoggle:
+    def _sync_material_states(self):
+        """把服务端当前生效的物品写进弹窗状态。
+
+        物品选择行的选中值在前置里是持久化的，这里每次打开前按服务端值重写一遍：
+        预览格回填当前生效物品，同时丢掉上次「选了但没点应用」的草稿。
+        """
+        if not self._card_settogstate:
             return
         for ak in ARMOR_KEYS:
-            repairable = self._read_setting_bool("repairable_" + ak, True)
-            consume = self._read_setting_bool("repair_consume_material_" + ak, True)
-            # 不可修复 或 不消耗物品 → 该羽"物品id"选项锁定
-            locked = (not repairable) or (not consume)
-            self._card_addtogopt(MATERIAL_TOGGLE_ID, MATERIAL_OPTION + ak,
-                                 ARMOR_KEY_TO_ITEM[ak], desc=ARMOR_DISPLAY[ak],
-                                 default_value=REPAIR_DEFAULTS[ak][1],
-                                 ctrl_type="toggle_edit_box", locked=locked)
-            cur = self._read_setting_str("repair_material_" + ak,
-                                         REPAIR_DEFAULTS[ak][1])
-            self._card_settogstate(MATERIAL_TOGGLE_ID, MATERIAL_OPTION + ak, cur)
+            try:
+                self._card_settogstate(MATERIAL_TOGGLE_ID, MATERIAL_OPTION + ak,
+                                       self._material_current(ak))
+            except Exception:
+                pass
+
+    def on_open_repair_material_toggle(self, screenNode, item_id):
+        """打开"修复所需物品"弹窗前：重注册行（含联动锁定）并按当前值回填预览。"""
+        if not self._card_opentoggle:
+            return
+        # 物品列表还没拿到就再请一次（服务端事件可能早于本系统注册而丢失）
+        self._request_all_items()
+        self._register_repair_material_toggle()
+        self._sync_material_states()
         self._card_opentoggle(MATERIAL_TOGGLE_ID)
 
+    def on_material_row_picked(self, screenNode, toggle_id, option_id, item_name, item_aux):
+        """物品选择行确认选中后的回调（仅记日志）。
+
+        行文本不随选择变化（只显示羽翼名，物品由预览格图标体现），选中值已由前置
+        写进弹窗状态，所以这里不需要重注册行、也不需要 RefreshCardToggle。
+        """
+        ak = ""
+        if option_id.startswith(MATERIAL_OPTION):
+            ak = option_id[len(MATERIAL_OPTION):]
+        if ak not in ARMOR_KEYS:
+            return
+        self._client_debug_print("已选择 %s 的修复物品：%s" % (ak, str(item_name)))
+
     def on_apply_repair_material_toggle(self, screenNode, toggle_id, state_dict):
-        """弹窗底部"应用到服务端"：提交逐羽物品id（服务端校验存在性并回退）。"""
+        """弹窗底部"应用到服务端"：提交逐羽物品id（服务端校验存在性并回退）。
+
+        物品选择行的状态是 "物品名|附加值"，取出物品名部分（设置项只存 identifier）；
+        没有状态的行取当前生效值，旧版前置的编辑框模式下状态就是手填文本。
+        """
         for ak in ARMOR_KEYS:
             opt = MATERIAL_OPTION + ak
-            self._send_setting_to_server("repair_material_" + ak, str(state_dict.get(opt, "")))
+            value = _decode_material_value((state_dict or {}).get(opt))
+            if not value:
+                value = self._material_current(ak)
+            self._send_setting_to_server("repair_material_" + ak, value)
         if self._card_closetoggle:
             self._card_closetoggle()
 
@@ -884,6 +1105,8 @@ class FlyArmorClientSystem(ClientSystem):
         self.NotifyToServer("FlyArmorRequestPermissionEvent", {
             "playerId": localPlayerId
         })
+        # 顺手补请一次全部物品列表（初始化时的事件可能丢失，丢了靠这里补上）
+        self._request_all_items()
 
     # ==================== 控件回调 ====================
 
